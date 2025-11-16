@@ -38,3 +38,10 @@ out/
 /.claude/settings.local.json
 /gradle.properties
 /example-suh-project-utility/
+
+### Test Configuration (API Keys) ###
+# 테스트용 설정 파일 제외 (API 키 포함)
+src/test/resources/application.yml
+src/test/resources/application.properties
+src/test/resources/application*.yml
+src/test/resources/application*.properties

@@ -1,1 +1,20 @@
-spring.application.name: ai
+spring:
+  application:
+    name: ai
+
+# Ollama AI 서버 설정
+suh:
+  ai:
+    # Ollama 서버 기본 URL
+    base-url: https://ai.suhsaechan.kr
+
+    # API 인증 키 (환경변수 사용 권장)
+    api-key: ${AI_API_KEY:}
+
+    # 타임아웃 설정 (초 단위)
+    connect-timeout: 30
+    read-timeout: 120
+    write-timeout: 30
+
+    # Auto-Configuration 활성화 여부
+    enabled: true
