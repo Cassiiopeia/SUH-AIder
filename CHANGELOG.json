@@ -1,11 +1,42 @@
 {
   "metadata": {
-    "lastUpdated": "2025-11-16T15:08:51Z",
-    "currentVersion": "0.0.5",
+    "lastUpdated": "2025-11-16T15:25:07Z",
+    "currentVersion": "0.0.6",
     "projectType": "spring",
-    "totalReleases": 1
+    "totalReleases": 2
   },
   "releases": [
+    {
+      "version": "0.0.6",
+      "project_type": "spring",
+      "date": "2025-11-16",
+      "pr_number": 4,
+      "raw_summary": "Summary by CodeRabbit\n릴리스 노트 v0.0.6\n\n\n새로운 기능\n\nOllama AI 서버 통합 지원 추가\nAI 모델 상태 확인 및 생성 기능 구현\n설정 기반 Ollama 연결 구성\n\n\n\n의존성\n\nSpring Boot 설정 프로세서 추가\nJackson 라이브러리 업데이트\n\n\n\nChores\n\n버전 업그레이드 (v0.0.5 → v0.0.6)\nAPI 키 테스트 구성 파일 제외 설정 추가",
+      "parsed_changes": {
+        "새로운_기능": {
+          "title": "새로운 기능",
+          "items": [
+            "Ollama AI 서버 통합 지원 추가",
+            "AI 모델 상태 확인 및 생성 기능 구현",
+            "설정 기반 Ollama 연결 구성"
+          ]
+        },
+        "의존성": {
+          "title": "의존성",
+          "items": [
+            "Spring Boot 설정 프로세서 추가",
+            "Jackson 라이브러리 업데이트"
+          ]
+        },
+        "chores": {
+          "title": "Chores",
+          "items": [
+            "버전 업그레이드 (v0.0.5 → v0.0.6)",
+            "API 키 테스트 구성 파일 제외 설정 추가"
+          ]
+        }
+      }
+    },
     {
       "version": "0.0.5",
       "project_type": "spring",
