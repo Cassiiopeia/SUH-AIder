@@ -2,10 +2,13 @@ package kr.suhsaechan.ai.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import kr.suhsaechan.ai.service.OllamaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -62,5 +65,21 @@ public class OllamaClientConfig {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         return mapper;
+    }
+
+    /**
+     * OllamaService Bean 생성 (Customizer 주입 지원)
+     *
+     * 사용자가 OllamaServiceCustomizer를 @Bean으로 등록하면 자동 주입됩니다.
+     */
+    @Bean
+    @ConditionalOnMissingBean(OllamaService.class)
+    public OllamaService ollamaService(
+            @Qualifier("ollamaHttpClient") OkHttpClient httpClient,
+            @Qualifier("ollamaObjectMapper") ObjectMapper objectMapper,
+            @Autowired(required = false) OllamaServiceCustomizer customizer
+    ) {
+        log.info("OllamaService Bean 생성 - customizer: {}", customizer != null ? "있음" : "없음");
+        return new OllamaService(httpClient, objectMapper, properties, customizer);
     }
 }

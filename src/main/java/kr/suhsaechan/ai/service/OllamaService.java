@@ -3,19 +3,24 @@ package kr.suhsaechan.ai.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.suhsaechan.ai.config.OllamaProperties;
+import kr.suhsaechan.ai.config.OllamaServiceCustomizer;
 import kr.suhsaechan.ai.exception.OllamaErrorCode;
 import kr.suhsaechan.ai.exception.OllamaException;
+import kr.suhsaechan.ai.model.JsonSchema;
 import kr.suhsaechan.ai.model.ModelListResponse;
 import kr.suhsaechan.ai.model.OllamaRequest;
 import kr.suhsaechan.ai.model.OllamaResponse;
-import lombok.RequiredArgsConstructor;
+import kr.suhsaechan.ai.util.JsonResponseCleaner;
+import kr.suhsaechan.ai.util.PromptEnhancer;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -31,17 +36,28 @@ import java.net.SocketTimeoutException;
  * 3. Generate API (프롬프트 → 응답 생성)
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class OllamaService {
 
-    @Qualifier("ollamaHttpClient")
     private final OkHttpClient httpClient;
-
-    @Qualifier("ollamaObjectMapper")
     private final ObjectMapper objectMapper;
-
     private final OllamaProperties properties;
+    private final OllamaServiceCustomizer customizer;
+
+    /**
+     * 생성자 주입 (Customizer는 선택적)
+     */
+    public OllamaService(
+            @Qualifier("ollamaHttpClient") OkHttpClient httpClient,
+            @Qualifier("ollamaObjectMapper") ObjectMapper objectMapper,
+            OllamaProperties properties,
+            @Nullable @Autowired(required = false) OllamaServiceCustomizer customizer
+    ) {
+        this.httpClient = httpClient;
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+        this.customizer = customizer;
+    }
 
     /**
      * 초기화 시점에 필수 설정 검증
@@ -148,14 +164,15 @@ public class OllamaService {
      * AI 텍스트 생성 (Generate API)
      * POST /api/generate
      *
-     * @param request OllamaRequest (model, prompt, stream)
+     * @param request OllamaRequest (model, prompt, stream, responseSchema)
      * @return OllamaResponse (생성된 텍스트 포함)
      * @throws OllamaException 네트워크 오류 또는 파싱 오류 시
      */
     public OllamaResponse generate(OllamaRequest request) {
-        log.debug("Generate 호출 - 모델: {}, 프롬프트 길이: {}",
+        log.debug("Generate 호출 - 모델: {}, 프롬프트 길이: {}, responseSchema: {}",
                 request.getModel(),
-                request.getPrompt() != null ? request.getPrompt().length() : 0);
+                request.getPrompt() != null ? request.getPrompt().length() : 0,
+                request.getResponseSchema() != null ? "있음" : "없음");
 
         // 파라미터 검증
         if (!StringUtils.hasText(request.getModel())) {
@@ -165,11 +182,32 @@ public class OllamaService {
             throw new OllamaException(OllamaErrorCode.INVALID_PARAMETER, "프롬프트가 비어있습니다");
         }
 
+        // ✅ 1. 전역 기본 스키마 적용 (customizer가 있고, 요청에 스키마가 없으면)
+        JsonSchema effectiveSchema = request.getResponseSchema();
+        if (effectiveSchema == null && customizer != null) {
+            effectiveSchema = customizer.getDefaultResponseSchema();
+            log.debug("전역 기본 responseSchema 적용");
+        }
+
+        // ✅ 2. 프롬프트 자동 증강 (스키마가 있으면)
+        String finalPrompt = request.getPrompt();
+        if (effectiveSchema != null) {
+            finalPrompt = PromptEnhancer.enhance(request.getPrompt(), effectiveSchema);
+            log.debug("프롬프트 증강 완료 - 원본 {}자 → 증강 {}자",
+                    request.getPrompt().length(), finalPrompt.length());
+        }
+
+        // ✅ 3. HTTP 요청 준비 (증강된 프롬프트 사용, responseSchema는 제외)
+        OllamaRequest enhancedRequest = request.toBuilder()
+                .prompt(finalPrompt)
+                .responseSchema(null)  // Ollama API로 전송 안 함
+                .build();
+
         String url = properties.getBaseUrl() + "/api/generate";
 
         try {
             // JSON 페이로드 생성
-            String jsonPayload = objectMapper.writeValueAsString(request);
+            String jsonPayload = objectMapper.writeValueAsString(enhancedRequest);
             log.debug("Generate 요청 페이로드: {}", jsonPayload);
 
             RequestBody body = RequestBody.create(
@@ -197,6 +235,26 @@ public class OllamaService {
                 }
 
                 OllamaResponse ollamaResponse = objectMapper.readValue(responseBody, OllamaResponse.class);
+
+                // ✅ 4. JSON 응답 후처리 (스키마가 있었으면)
+                if (effectiveSchema != null) {
+                    String rawJsonResponse = ollamaResponse.getResponse();
+                    String cleanedJson = JsonResponseCleaner.clean(rawJsonResponse);
+                    ollamaResponse.setResponse(cleanedJson);
+
+                    log.debug("JSON 응답 정제 완료 - 원본 {}자 → 정제 {}자",
+                            rawJsonResponse != null ? rawJsonResponse.length() : 0,
+                            cleanedJson.length());
+
+                    // 검증
+                    if (!JsonResponseCleaner.isValidJson(cleanedJson, objectMapper)) {
+                        log.warn("AI가 유효하지 않은 JSON 반환 (원본 유지): {}",
+                                cleanedJson.substring(0, Math.min(100, cleanedJson.length())));
+                    } else {
+                        log.debug("JSON 유효성 검증 성공");
+                    }
+                }
+
                 log.info("Generate 완료 - 응답 길이: {}, 처리 시간: {}ms",
                         ollamaResponse.getResponse() != null ? ollamaResponse.getResponse().length() : 0,
                         ollamaResponse.getTotalDuration() != null ? ollamaResponse.getTotalDuration() / 1_000_000 : 0);

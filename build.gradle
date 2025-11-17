@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'kr.suhsaechan'
-version = '0.0.6'
+version = '0.0.10'
 description = 'SUH-AI-MODULE'
 
 java {
