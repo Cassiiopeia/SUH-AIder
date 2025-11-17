@@ -1,11 +1,35 @@
 {
   "metadata": {
-    "lastUpdated": "2025-11-16T15:25:07Z",
-    "currentVersion": "0.0.6",
+    "lastUpdated": "2025-11-17T09:26:08Z",
+    "currentVersion": "0.0.10",
     "projectType": "spring",
-    "totalReleases": 2
+    "totalReleases": 3
   },
   "releases": [
+    {
+      "version": "0.0.10",
+      "project_type": "spring",
+      "date": "2025-11-17",
+      "pr_number": 6,
+      "raw_summary": "Summary by CodeRabbit\n릴리스 노트 v0.0.10\n\n\n새로운 기능\n\nJSON Schema를 통한 구조화된 응답 형식 지정 기능 추가\n프롬프트 전처리 및 후처리, 응답 타임아웃 커스터마이징 옵션 추가\n응답 검증 및 정제 기능 추가\n\n\n\n문서\n\nREADME 전면 개편 (설치, 설정, 사용 예제, API 레퍼런스 포함)\nJSON Schema 사용 가이드 문서 추가",
+      "parsed_changes": {
+        "새로운_기능": {
+          "title": "새로운 기능",
+          "items": [
+            "JSON Schema를 통한 구조화된 응답 형식 지정 기능 추가",
+            "프롬프트 전처리 및 후처리, 응답 타임아웃 커스터마이징 옵션 추가",
+            "응답 검증 및 정제 기능 추가"
+          ]
+        },
+        "문서": {
+          "title": "문서",
+          "items": [
+            "README 전면 개편 (설치, 설정, 사용 예제, API 레퍼런스 포함)",
+            "JSON Schema 사용 가이드 문서 추가"
+          ]
+        }
+      }
+    },
     {
       "version": "0.0.6",
       "project_type": "spring",
