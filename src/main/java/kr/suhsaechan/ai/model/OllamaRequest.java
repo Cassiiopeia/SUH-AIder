@@ -1,5 +1,6 @@
 package kr.suhsaechan.ai.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,7 +10,7 @@ import lombok.NoArgsConstructor;
  * Ollama Generate API 요청 DTO
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class OllamaRequest {
@@ -30,4 +31,22 @@ public class OllamaRequest {
      */
     @Builder.Default
     private Boolean stream = false;
+
+    /**
+     * JSON 응답 강제를 위한 스키마 정의
+     * 이 필드가 설정되면 프롬프트에 JSON 형식 지시문이 자동으로 추가됩니다.
+     *
+     * 사용 예제:
+     * <pre>
+     * OllamaRequest.builder()
+     *     .model("gemma3:4b")
+     *     .prompt("Extract name and age")
+     *     .responseSchema(JsonSchema.of("name", "string", "age", "integer"))
+     *     .build();
+     * </pre>
+     *
+     * @see JsonSchema
+     */
+    @JsonIgnore  // Ollama API로 전송하지 않음 (내부 처리용)
+    private JsonSchema responseSchema;
 }
