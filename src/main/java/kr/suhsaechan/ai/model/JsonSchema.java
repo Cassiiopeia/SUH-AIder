@@ -20,13 +20,22 @@ import java.util.*;
  *
  * // 방식 2: 복잡한 스키마 (빌더 패턴)
  * JsonSchema schema = JsonSchema.builder()
+ *     .title("사용자 정보")
+ *     .description("사용자 기본 정보")
+ *     .properties(propertiesMap)
+ *     .requiredFields(Arrays.asList("name"))
+ *     .build();
+ *
+ * // 또는 빌더로 생성 후 인스턴스 메서드 사용
+ * JsonSchema schema = JsonSchema.builder()
+ *     .build()
  *     .property("name", "string")
  *     .property("age", "integer")
- *     .required("name")
- *     .build();
+ *     .required("name");
  * </pre>
  */
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -93,23 +102,6 @@ public class JsonSchema {
         return schema;
     }
 
-    /**
-     * ✅ 방식 2: 빌더 패턴 (복잡한 스키마용)
-     *
-     * @return SchemaBuilder 인스턴스
-     *
-     * 예:
-     * <pre>
-     * JsonSchema.builder()
-     *     .property("name", "string")
-     *     .property("age", "integer")
-     *     .required("name")
-     *     .build();
-     * </pre>
-     */
-    public static SchemaBuilder builder() {
-        return new SchemaBuilder();
-    }
 
     /**
      * ✅ 방식 3: 클래스 기반 스키마 생성 (리플렉션)
@@ -218,66 +210,4 @@ public class JsonSchema {
         return this;
     }
 
-    /**
-     * 커스텀 빌더 클래스 (기존 Lombok Builder와 병행 사용)
-     */
-    public static class SchemaBuilder {
-        private String type = "object";
-        private String title;
-        private String description;
-        private Map<String, PropertySchema> properties = new LinkedHashMap<>();
-        private List<String> requiredFields = new ArrayList<>();
-        private JsonSchema items;
-
-        public SchemaBuilder type(String type) {
-            this.type = type;
-            return this;
-        }
-
-        public SchemaBuilder title(String title) {
-            this.title = title;
-            return this;
-        }
-
-        public SchemaBuilder description(String description) {
-            this.description = description;
-            return this;
-        }
-
-        public SchemaBuilder property(String name, String type) {
-            this.properties.put(name, PropertySchema.of(type));
-            return this;
-        }
-
-        public SchemaBuilder property(String name, PropertySchema propertySchema) {
-            this.properties.put(name, propertySchema);
-            return this;
-        }
-
-        public SchemaBuilder property(String name, JsonSchema nestedSchema) {
-            this.properties.put(name, PropertySchema.of(nestedSchema));
-            return this;
-        }
-
-        public SchemaBuilder required(String... fields) {
-            this.requiredFields.addAll(Arrays.asList(fields));
-            return this;
-        }
-
-        public SchemaBuilder items(JsonSchema itemSchema) {
-            this.items = itemSchema;
-            return this;
-        }
-
-        public JsonSchema build() {
-            JsonSchema schema = new JsonSchema();
-            schema.setType(this.type);
-            schema.setTitle(this.title);
-            schema.setDescription(this.description);
-            schema.setProperties(this.properties);
-            schema.setRequiredFields(this.requiredFields);
-            schema.setItems(this.items);
-            return schema;
-        }
-    }
 }

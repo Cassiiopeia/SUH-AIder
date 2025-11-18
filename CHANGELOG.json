@@ -1,11 +1,27 @@
 {
   "metadata": {
-    "lastUpdated": "2025-11-18T02:06:25Z",
-    "currentVersion": "0.1.0",
+    "lastUpdated": "2025-11-18T04:09:22Z",
+    "currentVersion": "0.1.1",
     "projectType": "spring",
-    "totalReleases": 4
+    "totalReleases": 5
   },
   "releases": [
+    {
+      "version": "0.1.1",
+      "project_type": "spring",
+      "date": "2025-11-18",
+      "pr_number": 8,
+      "raw_summary": "Summary by CodeRabbit\n릴리스 노트\n\n버전 업데이트\n\n프로젝트 버전을 0.1.1로 업데이트했습니다.\n내부 구조가 최적화되어 더욱 효율적으로 작동합니다.",
+      "parsed_changes": {
+        "버전_업데이트": {
+          "title": "버전 업데이트",
+          "items": [
+            "프로젝트 버전을 0.1.1로 업데이트했습니다.",
+            "내부 구조가 최적화되어 더욱 효율적으로 작동합니다."
+          ]
+        }
+      }
+    },
     {
       "version": "0.1.0",
       "project_type": "spring",

@@ -50,6 +50,7 @@ public class JsonSchemaClassParser {
         visitedClasses.add(clazz);
 
         JsonSchema.JsonSchemaBuilder builder = JsonSchema.builder();
+        Map<String, PropertySchema> properties = new LinkedHashMap<>();
         List<String> requiredFields = new ArrayList<>();
 
         // 1. @AiClass 어노테이션 처리
@@ -78,7 +79,7 @@ public class JsonSchemaClassParser {
             // PropertySchema 생성
             PropertySchema propSchema = buildPropertySchema(field, fieldType, visitedClasses);
 
-            builder.property(fieldName, propSchema);
+            properties.put(fieldName, propSchema);
 
             // required 필드 수집
             AiSchema aiSchema = field.getAnnotation(AiSchema.class);
@@ -89,9 +90,10 @@ public class JsonSchemaClassParser {
             log.debug("필드 추가: {}.{} (type: {})", clazz.getSimpleName(), fieldName, propSchema.getType());
         }
 
-        // required 필드 설정
+        // 빌더에 properties와 requiredFields 설정
+        builder.properties(properties);
         if (!requiredFields.isEmpty()) {
-            builder.required(requiredFields.toArray(new String[0]));
+            builder.requiredFields(requiredFields);
         }
 
         visitedClasses.remove(clazz);
