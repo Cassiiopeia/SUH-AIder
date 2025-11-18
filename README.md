@@ -1,4 +1,4 @@
-# suh-ai-module
+# SUH-AIDER
 
 Ollama AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니다.
 
@@ -26,7 +26,7 @@ Ollama AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러�
 
 ## 개요
 
-**suh-ai-module**은 Ollama AI 서버(`https://ai.suhsaechan.kr`)와의 통신을 간소화하는 Spring Boot 라이브러리입니다.
+**suh-aider**는 Ollama AI 서버(`https://ai.suhsaechan.kr`)와의 통신을 간소화하는 Spring Boot 라이브러리입니다.
 
 ### 특징
 - ✅ **Auto-Configuration**: Spring Boot 자동 설정 지원
@@ -56,7 +56,7 @@ Ollama AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러�
 
 ```gradle
 dependencies {
-    implementation 'kr.suhsaechan:suh-ai-module:0.0.5'
+    implementation 'kr.suhsaechan:suh-aider:0.0.5'
 }
 ```
 
@@ -65,7 +65,7 @@ dependencies {
 ```xml
 <dependency>
     <groupId>kr.suhsaechan</groupId>
-    <artifactId>suh-ai-module</artifactId>
+    <artifactId>suh-aider</artifactId>
     <version>0.0.5</version>
 </dependency>
 ```

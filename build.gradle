@@ -7,7 +7,7 @@ plugins {
 
 group = 'kr.suhsaechan'
 version = '0.0.10'
-description = 'SUH-AI-MODULE'
+description = 'SUH-AIDER'
 
 java {
 	toolchain {
@@ -56,9 +56,9 @@ publishing {
 		mavenJava(MavenPublication) {
 			from components.java
 			pom {
-				name = 'suh-ai-module'
+				name = 'suh-aider'
 				description = '서새찬 AI 서버 통신 라이브러리'
-				url = 'https://github.com/Cassiiopeia/suh-ai-module/'
+				url = 'https://github.com/Cassiiopeia/suh-aider/'
 			}
 		}
 	}

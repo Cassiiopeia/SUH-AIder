@@ -1,6 +1,6 @@
 spring:
   application:
-    name: ai
+    name: suh-aider
 
 # Ollama AI 서버 설정
 suh:
