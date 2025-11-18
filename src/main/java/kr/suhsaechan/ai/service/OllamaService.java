@@ -60,16 +60,18 @@ public class OllamaService {
     }
 
     /**
-     * 초기화 시점에 필수 설정 검증
+     * 초기화 시점에 설정 검증
      */
     @PostConstruct
     public void init() {
         log.info("OllamaService 초기화 - baseUrl: {}", properties.getBaseUrl());
 
-        // API 키 필수 검증
-        if (!StringUtils.hasText(properties.getApiKey())) {
-            log.error("API 키가 설정되지 않았습니다. suh.ai.api-key를 환경변수 또는 application.yml에 설정해주세요.");
-            throw new OllamaException(OllamaErrorCode.API_KEY_MISSING);
+        // Security Header 설정 여부 확인 (선택적)
+        if (!hasSecurityHeader()) {
+            log.warn("Security Header가 설정되지 않았습니다. 인증이 필요한 서버에서는 401/403 오류가 발생할 수 있습니다.");
+            log.warn("설정 방법: suh.ai.security.api-key 또는 환경변수 AI_API_KEY");
+        } else {
+            log.info("Security Header 설정됨 - header: {}", properties.getSecurity().getHeaderName());
         }
 
         log.info("OllamaService 초기화 완료");
@@ -85,9 +87,8 @@ public class OllamaService {
         log.debug("AI 서버 Health Check 시작: {}", properties.getBaseUrl());
 
         try {
-            Request request = new Request.Builder()
+            Request request = addSecurityHeader(new Request.Builder())
                     .url(properties.getBaseUrl())
-                    .addHeader("X-API-Key", properties.getApiKey())
                     .get()
                     .build();
 
@@ -123,9 +124,8 @@ public class OllamaService {
         String url = properties.getBaseUrl() + "/api/tags";
 
         try {
-            Request request = new Request.Builder()
+            Request request = addSecurityHeader(new Request.Builder())
                     .url(url)
-                    .addHeader("X-API-Key", properties.getApiKey())
                     .get()
                     .build();
 
@@ -215,9 +215,8 @@ public class OllamaService {
                     MediaType.parse("application/json; charset=utf-8")
             );
 
-            Request httpRequest = new Request.Builder()
+            Request httpRequest = addSecurityHeader(new Request.Builder())
                     .url(url)
-                    .addHeader("X-API-Key", properties.getApiKey())
                     .addHeader("Content-Type", "application/json")
                     .post(body)
                     .build();
@@ -312,5 +311,51 @@ public class OllamaService {
                 throw new OllamaException(OllamaErrorCode.INVALID_RESPONSE,
                         "HTTP " + statusCode + ": " + responseBody);
         }
+    }
+
+    /**
+     * Security Header 설정 여부 확인
+     *
+     * @return API 키가 설정되어 있으면 true, 아니면 false
+     */
+    private boolean hasSecurityHeader() {
+        return properties.getSecurity() != null
+                && StringUtils.hasText(properties.getSecurity().getApiKey());
+    }
+
+    /**
+     * Request Builder에 Security Header 추가 (있는 경우에만)
+     *
+     * @param builder OkHttp Request.Builder
+     * @return 헤더가 추가된 Request.Builder
+     */
+    private Request.Builder addSecurityHeader(Request.Builder builder) {
+        if (hasSecurityHeader()) {
+            OllamaProperties.Security security = properties.getSecurity();
+
+            // {value}를 실제 API 키로 치환
+            String headerValue = security.getHeaderValueFormat()
+                    .replace("{value}", security.getApiKey());
+
+            builder.addHeader(security.getHeaderName(), headerValue);
+
+            log.debug("Security Header 추가 - {}: {}",
+                    security.getHeaderName(),
+                    maskSensitiveValue(headerValue));
+        }
+        return builder;
+    }
+
+    /**
+     * 민감한 값 마스킹 (로그용)
+     *
+     * @param value 원본 값
+     * @return 마스킹된 값 (앞 4자리만 표시)
+     */
+    private String maskSensitiveValue(String value) {
+        if (value == null || value.length() <= 4) {
+            return "****";
+        }
+        return value.substring(0, 4) + "****";
     }
 }

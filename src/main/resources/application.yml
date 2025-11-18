@@ -6,10 +6,26 @@ spring:
 suh:
   ai:
     # Ollama 서버 기본 URL
-    base-url: https://ai.suhsaechan.kr
+    base-url: http://localhost:11434 # https://ai.suhsaechan.kr
 
-    # API 인증 키 (환경변수 사용 권장)
-    api-key: ${AI_API_KEY:}
+    # Security Header 설정 (선택적)
+    # 인증이 필요한 서버에서만 설정하세요
+    security:
+      # HTTP 헤더 이름 (기본값: X-API-Key)
+      # 예시: Authorization, X-Custom-Auth 등
+      header-name: X-API-Key
+
+      # 헤더 값 포맷 (기본값: {value})
+      # {value}는 api-key 값으로 자동 치환됩니다
+      # 예시:
+      #   - "{value}" : 값 그대로 (기본)
+      #   - "Bearer {value}" : Bearer 토큰
+      #   - "CustomScheme {value}" : 커스텀 스킴
+      header-value-format: "{value}"
+
+      # API 인증 키 (환경변수 사용 권장)
+      # 설정하지 않으면 인증 헤더를 추가하지 않습니다 (로컬 Ollama 서버용)
+      api-key: ${AI_API_KEY:}
 
     # 타임아웃 설정 (초 단위)
     connect-timeout: 30

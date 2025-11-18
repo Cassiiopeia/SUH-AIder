@@ -17,10 +17,10 @@ public class OllamaProperties {
     private String baseUrl = "https://ai.suhsaechan.kr";
 
     /**
-     * API 인증 키 (X-API-Key 헤더에 사용)
-     * 환경변수 또는 application.yml에서 설정
+     * Security Header 설정 (선택적)
+     * 설정하지 않으면 인증 헤더를 추가하지 않습니다.
      */
-    private String apiKey;
+    private Security security = new Security();
 
     /**
      * HTTP 연결 타임아웃 (초)
@@ -46,4 +46,34 @@ public class OllamaProperties {
      * 기본값: true
      */
     private boolean enabled = true;
+
+    /**
+     * Security Header 설정 클래스
+     */
+    @Data
+    public static class Security {
+
+        /**
+         * HTTP 헤더 이름
+         * 기본값: X-API-Key
+         * 예시: Authorization, X-Custom-Auth 등
+         */
+        private String headerName = "X-API-Key";
+
+        /**
+         * 헤더 값 포맷
+         * {value}는 apiKey 값으로 치환됩니다.
+         *
+         * 기본값: "{value}" (값 그대로)
+         * Bearer 토큰: "Bearer {value}"
+         * 커스텀: "CustomScheme {value}"
+         */
+        private String headerValueFormat = "{value}";
+
+        /**
+         * API 인증 키 (선택적)
+         * 설정하지 않으면 헤더를 추가하지 않습니다.
+         */
+        private String apiKey;
+    }
 }

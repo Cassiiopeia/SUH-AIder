@@ -82,7 +82,8 @@ dependencies {
 suh:
   ai:
     base-url: https://ai.suhsaechan.kr
-    api-key: ${AI_API_KEY}  # 환경변수 사용 권장
+    security:
+      api-key: ${AI_API_KEY}  # 환경변수 사용 권장
 ```
 
 ### 2. 서비스 주입 및 사용
@@ -128,8 +129,19 @@ suh:
     # Ollama 서버 기본 URL (필수)
     base-url: https://ai.suhsaechan.kr
 
-    # API 인증 키 (필수)
-    api-key: ${AI_API_KEY}
+    # Security Header 설정 (선택적)
+    # 인증이 필요한 서버에서만 설정하세요
+    security:
+      # HTTP 헤더 이름 (기본값: X-API-Key)
+      header-name: X-API-Key
+
+      # 헤더 값 포맷 (기본값: {value})
+      # {value}는 api-key 값으로 치환됩니다
+      header-value-format: "{value}"
+
+      # API 인증 키 (선택적)
+      # 설정하지 않으면 인증 헤더를 추가하지 않습니다
+      api-key: ${AI_API_KEY}
 
     # HTTP 연결 타임아웃 (초, 기본: 30)
     connect-timeout: 30
@@ -142,6 +154,44 @@ suh:
 
     # Auto-Configuration 활성화 여부 (기본: true)
     enabled: true
+```
+
+### Security Header 설정 예제
+
+#### 1. 기본 X-API-Key 방식 (기본값)
+```yaml
+suh:
+  ai:
+    security:
+      api-key: ${AI_API_KEY}
+```
+
+#### 2. Bearer 토큰 방식
+```yaml
+suh:
+  ai:
+    security:
+      header-name: Authorization
+      header-value-format: "Bearer {value}"
+      api-key: ${JWT_TOKEN}
+```
+
+#### 3. 커스텀 헤더 방식
+```yaml
+suh:
+  ai:
+    security:
+      header-name: X-Custom-Auth
+      header-value-format: "CustomScheme {value}"
+      api-key: ${CUSTOM_TOKEN}
+```
+
+#### 4. 인증 없음 (로컬 Ollama 서버)
+```yaml
+suh:
+  ai:
+    base-url: http://localhost:11434
+    # security 설정 생략 = 인증 헤더 추가 안 함
 ```
 
 ### 환경변수 설정 방법
@@ -348,12 +398,14 @@ JsonSchema.builder()
 
 | 에러 코드 | 설명 |
 |-----------|------|
-| `API_KEY_MISSING` | API 키가 설정되지 않음 |
 | `NETWORK_ERROR` | 네트워크 연결 오류 |
 | `MODEL_NOT_FOUND` | 요청한 모델을 찾을 수 없음 |
 | `INVALID_PARAMETER` | 잘못된 파라미터 |
-| `UNAUTHORIZED` | API 키가 올바르지 않음 |
-| `SERVER_ERROR` | AI 서버 오류 |
+| `UNAUTHORIZED` | API 키가 올바르지 않음 (401) |
+| `FORBIDDEN` | 접근 권한 없음 (403) |
+| `SERVER_ERROR` | AI 서버 오류 (500/502/503) |
+
+> **참고**: API 키는 이제 선택적입니다. 설정하지 않으면 인증 헤더를 추가하지 않습니다.
 
 ---
 
