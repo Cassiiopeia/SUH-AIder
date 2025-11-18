@@ -6,12 +6,12 @@ plugins {
 }
 
 group = 'kr.suhsaechan'
-version = '0.1.1'
+version = '0.1.2'
 description = 'SUH-AIDER'
 
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(21)
+		languageVersion = JavaLanguageVersion.of(17)
 	}
 	withSourcesJar()
 }

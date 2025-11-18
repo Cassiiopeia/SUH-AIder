@@ -1,11 +1,28 @@
 {
   "metadata": {
-    "lastUpdated": "2025-11-18T04:09:22Z",
-    "currentVersion": "0.1.1",
+    "lastUpdated": "2025-11-18T09:54:46Z",
+    "currentVersion": "0.1.2",
     "projectType": "spring",
-    "totalReleases": 5
+    "totalReleases": 6
   },
   "releases": [
+    {
+      "version": "0.1.2",
+      "project_type": "spring",
+      "date": "2025-11-18",
+      "pr_number": 10,
+      "raw_summary": "Summary by CodeRabbit\n릴리스 노트\n\nChores\n\n프로젝트 버전을 0.1.2로 업그레이드했습니다.\nJava 버전을 17로 업데이트하여 빌드 환경과 배포 파이프라인을 개선했습니다.\n버전 정보와 빌드 메타데이터를 최신으로 동기화했습니다.",
+      "parsed_changes": {
+        "chores": {
+          "title": "Chores",
+          "items": [
+            "프로젝트 버전을 0.1.2로 업그레이드했습니다.",
+            "Java 버전을 17로 업데이트하여 빌드 환경과 배포 파이프라인을 개선했습니다.",
+            "버전 정보와 빌드 메타데이터를 최신으로 동기화했습니다."
+          ]
+        }
+      }
+    },
     {
       "version": "0.1.1",
       "project_type": "spring",
