@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * OllamaService 전역 설정 커스터마이저
+ * SuhAiderEngine 전역 설정 커스터마이저
  *
  * 사용자가 @Bean으로 등록하여 전역 기본 설정을 제공할 수 있습니다.
  *
@@ -17,8 +17,8 @@ import lombok.NoArgsConstructor;
  * public class AiConfig {
  *
  *     {@code @Bean}
- *     public OllamaServiceCustomizer ollamaCustomizer() {
- *         return OllamaServiceCustomizer.builder()
+ *     public SuhAiderCustomizer suhAiderCustomizer() {
+ *         return SuhAiderCustomizer.builder()
  *             .defaultResponseSchema(JsonSchema.of(
  *                 "result", "string",
  *                 "success", "boolean"
@@ -32,7 +32,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class OllamaServiceCustomizer {
+public class SuhAiderCustomizer {
 
     /**
      * 모든 요청에 기본으로 적용할 responseSchema
@@ -45,7 +45,7 @@ public class OllamaServiceCustomizer {
     /**
      * 커스텀 타임아웃 설정 (초 단위, 선택적)
      *
-     * null이면 OllamaProperties의 기본값 사용
+     * null이면 SuhAiderConfig의 기본값 사용
      */
     private Integer customReadTimeout;
 

@@ -2,6 +2,7 @@ package kr.suhsaechan.ai.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import kr.suhsaechan.ai.util.JsonSchemaClassParser;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,6 +37,16 @@ public class JsonSchema {
      */
     @Builder.Default
     private String type = "object";
+
+    /**
+     * 스키마 제목 (@AiClass의 title)
+     */
+    private String title;
+
+    /**
+     * 스키마 설명 (@AiClass의 description)
+     */
+    private String description;
 
     /**
      * 속성 정의 (필드명 → 타입 정보)
@@ -98,6 +109,32 @@ public class JsonSchema {
      */
     public static SchemaBuilder builder() {
         return new SchemaBuilder();
+    }
+
+    /**
+     * ✅ 방식 3: 클래스 기반 스키마 생성 (리플렉션)
+     *
+     * @param clazz 스키마를 생성할 클래스 (@AiClass, @AiSchema 어노테이션 사용)
+     * @param <T> 클래스 타입
+     * @return JsonSchema 객체
+     *
+     * 예:
+     * <pre>
+     * {@code
+     * @AiClass(title = "사용자 정보")
+     * public class UserResponse {
+     *     @AiSchema(description = "이름", required = true)
+     *     private String name;
+     * }
+     *
+     * JsonSchema schema = JsonSchema.fromClass(UserResponse.class);
+     * }
+     * </pre>
+     *
+     * @since 0.0.9
+     */
+    public static <T> JsonSchema fromClass(Class<T> clazz) {
+        return JsonSchemaClassParser.parse(clazz);
     }
 
     /**
@@ -186,6 +223,8 @@ public class JsonSchema {
      */
     public static class SchemaBuilder {
         private String type = "object";
+        private String title;
+        private String description;
         private Map<String, PropertySchema> properties = new LinkedHashMap<>();
         private List<String> requiredFields = new ArrayList<>();
         private JsonSchema items;
@@ -195,8 +234,23 @@ public class JsonSchema {
             return this;
         }
 
+        public SchemaBuilder title(String title) {
+            this.title = title;
+            return this;
+        }
+
+        public SchemaBuilder description(String description) {
+            this.description = description;
+            return this;
+        }
+
         public SchemaBuilder property(String name, String type) {
             this.properties.put(name, PropertySchema.of(type));
+            return this;
+        }
+
+        public SchemaBuilder property(String name, PropertySchema propertySchema) {
+            this.properties.put(name, propertySchema);
             return this;
         }
 
@@ -218,6 +272,8 @@ public class JsonSchema {
         public JsonSchema build() {
             JsonSchema schema = new JsonSchema();
             schema.setType(this.type);
+            schema.setTitle(this.title);
+            schema.setDescription(this.description);
             schema.setProperties(this.properties);
             schema.setRequiredFields(this.requiredFields);
             schema.setItems(this.items);

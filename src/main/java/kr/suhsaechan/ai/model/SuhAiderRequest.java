@@ -7,13 +7,13 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Ollama Generate API 요청 DTO
+ * SUH-AIDER Generate API 요청 DTO
  */
 @Data
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
-public class OllamaRequest {
+public class SuhAiderRequest {
 
     /**
      * AI 모델명 (예: llama2, mistral, codellama)
@@ -38,7 +38,7 @@ public class OllamaRequest {
      *
      * 사용 예제:
      * <pre>
-     * OllamaRequest.builder()
+     * SuhAiderRequest.builder()
      *     .model("gemma3:4b")
      *     .prompt("Extract name and age")
      *     .responseSchema(JsonSchema.of("name", "string", "age", "integer"))

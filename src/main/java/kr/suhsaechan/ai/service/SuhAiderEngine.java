@@ -2,14 +2,14 @@ package kr.suhsaechan.ai.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.suhsaechan.ai.config.OllamaProperties;
-import kr.suhsaechan.ai.config.OllamaServiceCustomizer;
-import kr.suhsaechan.ai.exception.OllamaErrorCode;
-import kr.suhsaechan.ai.exception.OllamaException;
+import kr.suhsaechan.ai.config.SuhAiderConfig;
+import kr.suhsaechan.ai.config.SuhAiderCustomizer;
+import kr.suhsaechan.ai.exception.SuhAiderErrorCode;
+import kr.suhsaechan.ai.exception.SuhAiderException;
 import kr.suhsaechan.ai.model.JsonSchema;
 import kr.suhsaechan.ai.model.ModelListResponse;
-import kr.suhsaechan.ai.model.OllamaRequest;
-import kr.suhsaechan.ai.model.OllamaResponse;
+import kr.suhsaechan.ai.model.SuhAiderRequest;
+import kr.suhsaechan.ai.model.SuhAiderResponse;
 import kr.suhsaechan.ai.util.JsonResponseCleaner;
 import kr.suhsaechan.ai.util.PromptEnhancer;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 
 /**
- * Ollama AI 서버와 통신하는 서비스
+ * SUH-AIDER AI 서버와 통신하는 엔진
  * 핵심 기능:
  * 1. Health Check
  * 2. 모델 목록 조회
@@ -37,42 +37,44 @@ import java.net.SocketTimeoutException;
  */
 @Service
 @Slf4j
-public class OllamaService {
+public class SuhAiderEngine {
 
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private final OllamaProperties properties;
-    private final OllamaServiceCustomizer customizer;
+    private final SuhAiderConfig config;
+    private final SuhAiderCustomizer customizer;
 
     /**
      * 생성자 주입 (Customizer는 선택적)
      */
-    public OllamaService(
-            @Qualifier("ollamaHttpClient") OkHttpClient httpClient,
-            @Qualifier("ollamaObjectMapper") ObjectMapper objectMapper,
-            OllamaProperties properties,
-            @Nullable @Autowired(required = false) OllamaServiceCustomizer customizer
+    public SuhAiderEngine(
+            @Qualifier("suhAiderHttpClient") OkHttpClient httpClient,
+            @Qualifier("suhAiderObjectMapper") ObjectMapper objectMapper,
+            SuhAiderConfig config,
+            @Nullable @Autowired(required = false) SuhAiderCustomizer customizer
     ) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
-        this.properties = properties;
+        this.config = config;
         this.customizer = customizer;
     }
 
     /**
-     * 초기화 시점에 필수 설정 검증
+     * 초기화 시점에 설정 검증
      */
     @PostConstruct
     public void init() {
-        log.info("OllamaService 초기화 - baseUrl: {}", properties.getBaseUrl());
+        log.info("SuhAiderEngine 초기화 - baseUrl: {}", config.getBaseUrl());
 
-        // API 키 필수 검증
-        if (!StringUtils.hasText(properties.getApiKey())) {
-            log.error("API 키가 설정되지 않았습니다. suh.ai.api-key를 환경변수 또는 application.yml에 설정해주세요.");
-            throw new OllamaException(OllamaErrorCode.API_KEY_MISSING);
+        // Security Header 설정 여부 확인 (선택적)
+        if (!hasSecurityHeader()) {
+            log.warn("Security Header가 설정되지 않았습니다. 인증이 필요한 서버에서는 401/403 오류가 발생할 수 있습니다.");
+            log.warn("설정 방법: suh.aider.security.api-key 또는 환경변수 AI_API_KEY");
+        } else {
+            log.info("Security Header 설정됨 - header: {}", config.getSecurity().getHeaderName());
         }
 
-        log.info("OllamaService 초기화 완료");
+        log.info("SuhAiderEngine 초기화 완료");
     }
 
     /**
@@ -82,12 +84,11 @@ public class OllamaService {
      * @return 서버가 정상 작동 중이면 true, 아니면 false
      */
     public boolean isHealthy() {
-        log.debug("AI 서버 Health Check 시작: {}", properties.getBaseUrl());
+        log.debug("AI 서버 Health Check 시작: {}", config.getBaseUrl());
 
         try {
-            Request request = new Request.Builder()
-                    .url(properties.getBaseUrl())
-                    .addHeader("X-API-Key", properties.getApiKey())
+            Request request = addSecurityHeader(new Request.Builder())
+                    .url(config.getBaseUrl())
                     .get()
                     .build();
 
@@ -115,17 +116,16 @@ public class OllamaService {
      * GET /api/tags
      *
      * @return 모델 목록
-     * @throws OllamaException 네트워크 오류 또는 파싱 오류 시
+     * @throws SuhAiderException 네트워크 오류 또는 파싱 오류 시
      */
     public ModelListResponse getModels() {
         log.debug("모델 목록 조회 시작");
 
-        String url = properties.getBaseUrl() + "/api/tags";
+        String url = config.getBaseUrl() + "/api/tags";
 
         try {
-            Request request = new Request.Builder()
+            Request request = addSecurityHeader(new Request.Builder())
                     .url(url)
-                    .addHeader("X-API-Key", properties.getApiKey())
                     .get()
                     .build();
 
@@ -138,7 +138,7 @@ public class OllamaService {
                 }
 
                 if (!StringUtils.hasText(responseBody)) {
-                    throw new OllamaException(OllamaErrorCode.EMPTY_RESPONSE);
+                    throw new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE);
                 }
 
                 ModelListResponse modelList = objectMapper.readValue(responseBody, ModelListResponse.class);
@@ -150,13 +150,13 @@ public class OllamaService {
 
         } catch (SocketTimeoutException e) {
             log.error("모델 목록 조회 타임아웃: {}", e.getMessage());
-            throw new OllamaException(OllamaErrorCode.READ_TIMEOUT, e);
+            throw new SuhAiderException(SuhAiderErrorCode.READ_TIMEOUT, e);
         } catch (JsonProcessingException e) {
             log.error("JSON 파싱 실패: {}", e.getMessage());
-            throw new OllamaException(OllamaErrorCode.JSON_PARSE_ERROR, e);
+            throw new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e);
         } catch (IOException e) {
             log.error("네트워크 오류: {}", e.getMessage());
-            throw new OllamaException(OllamaErrorCode.NETWORK_ERROR, e);
+            throw new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e);
         }
     }
 
@@ -164,11 +164,11 @@ public class OllamaService {
      * AI 텍스트 생성 (Generate API)
      * POST /api/generate
      *
-     * @param request OllamaRequest (model, prompt, stream, responseSchema)
-     * @return OllamaResponse (생성된 텍스트 포함)
-     * @throws OllamaException 네트워크 오류 또는 파싱 오류 시
+     * @param request SuhAiderRequest (model, prompt, stream, responseSchema)
+     * @return SuhAiderResponse (생성된 텍스트 포함)
+     * @throws SuhAiderException 네트워크 오류 또는 파싱 오류 시
      */
-    public OllamaResponse generate(OllamaRequest request) {
+    public SuhAiderResponse generate(SuhAiderRequest request) {
         log.debug("Generate 호출 - 모델: {}, 프롬프트 길이: {}, responseSchema: {}",
                 request.getModel(),
                 request.getPrompt() != null ? request.getPrompt().length() : 0,
@@ -176,10 +176,10 @@ public class OllamaService {
 
         // 파라미터 검증
         if (!StringUtils.hasText(request.getModel())) {
-            throw new OllamaException(OllamaErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다");
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다");
         }
         if (!StringUtils.hasText(request.getPrompt())) {
-            throw new OllamaException(OllamaErrorCode.INVALID_PARAMETER, "프롬프트가 비어있습니다");
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "프롬프트가 비어있습니다");
         }
 
         // ✅ 1. 전역 기본 스키마 적용 (customizer가 있고, 요청에 스키마가 없으면)
@@ -198,12 +198,12 @@ public class OllamaService {
         }
 
         // ✅ 3. HTTP 요청 준비 (증강된 프롬프트 사용, responseSchema는 제외)
-        OllamaRequest enhancedRequest = request.toBuilder()
+        SuhAiderRequest enhancedRequest = request.toBuilder()
                 .prompt(finalPrompt)
                 .responseSchema(null)  // Ollama API로 전송 안 함
                 .build();
 
-        String url = properties.getBaseUrl() + "/api/generate";
+        String url = config.getBaseUrl() + "/api/generate";
 
         try {
             // JSON 페이로드 생성
@@ -215,9 +215,8 @@ public class OllamaService {
                     MediaType.parse("application/json; charset=utf-8")
             );
 
-            Request httpRequest = new Request.Builder()
+            Request httpRequest = addSecurityHeader(new Request.Builder())
                     .url(url)
-                    .addHeader("X-API-Key", properties.getApiKey())
                     .addHeader("Content-Type", "application/json")
                     .post(body)
                     .build();
@@ -231,16 +230,16 @@ public class OllamaService {
                 }
 
                 if (!StringUtils.hasText(responseBody)) {
-                    throw new OllamaException(OllamaErrorCode.EMPTY_RESPONSE);
+                    throw new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE);
                 }
 
-                OllamaResponse ollamaResponse = objectMapper.readValue(responseBody, OllamaResponse.class);
+                SuhAiderResponse suhAiderResponse = objectMapper.readValue(responseBody, SuhAiderResponse.class);
 
                 // ✅ 4. JSON 응답 후처리 (스키마가 있었으면)
                 if (effectiveSchema != null) {
-                    String rawJsonResponse = ollamaResponse.getResponse();
+                    String rawJsonResponse = suhAiderResponse.getResponse();
                     String cleanedJson = JsonResponseCleaner.clean(rawJsonResponse);
-                    ollamaResponse.setResponse(cleanedJson);
+                    suhAiderResponse.setResponse(cleanedJson);
 
                     log.debug("JSON 응답 정제 완료 - 원본 {}자 → 정제 {}자",
                             rawJsonResponse != null ? rawJsonResponse.length() : 0,
@@ -256,21 +255,21 @@ public class OllamaService {
                 }
 
                 log.info("Generate 완료 - 응답 길이: {}, 처리 시간: {}ms",
-                        ollamaResponse.getResponse() != null ? ollamaResponse.getResponse().length() : 0,
-                        ollamaResponse.getTotalDuration() != null ? ollamaResponse.getTotalDuration() / 1_000_000 : 0);
+                        suhAiderResponse.getResponse() != null ? suhAiderResponse.getResponse().length() : 0,
+                        suhAiderResponse.getTotalDuration() != null ? suhAiderResponse.getTotalDuration() / 1_000_000 : 0);
 
-                return ollamaResponse;
+                return suhAiderResponse;
             }
 
         } catch (SocketTimeoutException e) {
             log.error("Generate 타임아웃: {}", e.getMessage());
-            throw new OllamaException(OllamaErrorCode.READ_TIMEOUT, e);
+            throw new SuhAiderException(SuhAiderErrorCode.READ_TIMEOUT, e);
         } catch (JsonProcessingException e) {
             log.error("JSON 처리 실패: {}", e.getMessage());
-            throw new OllamaException(OllamaErrorCode.JSON_PARSE_ERROR, e);
+            throw new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e);
         } catch (IOException e) {
             log.error("네트워크 오류: {}", e.getMessage());
-            throw new OllamaException(OllamaErrorCode.NETWORK_ERROR, e);
+            throw new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e);
         }
     }
 
@@ -283,13 +282,13 @@ public class OllamaService {
      * @return 생성된 응답 텍스트
      */
     public String generate(String model, String prompt) {
-        OllamaRequest request = OllamaRequest.builder()
+        SuhAiderRequest request = SuhAiderRequest.builder()
                 .model(model)
                 .prompt(prompt)
                 .stream(false)
                 .build();
 
-        OllamaResponse response = generate(request);
+        SuhAiderResponse response = generate(request);
         return response.getResponse();
     }
 
@@ -299,18 +298,64 @@ public class OllamaService {
     private void handleHttpError(int statusCode, String responseBody) {
         switch (statusCode) {
             case 401:
-                throw new OllamaException(OllamaErrorCode.UNAUTHORIZED);
+                throw new SuhAiderException(SuhAiderErrorCode.UNAUTHORIZED);
             case 403:
-                throw new OllamaException(OllamaErrorCode.FORBIDDEN);
+                throw new SuhAiderException(SuhAiderErrorCode.FORBIDDEN);
             case 404:
-                throw new OllamaException(OllamaErrorCode.MODEL_NOT_FOUND, responseBody);
+                throw new SuhAiderException(SuhAiderErrorCode.MODEL_NOT_FOUND, responseBody);
             case 500:
             case 502:
             case 503:
-                throw new OllamaException(OllamaErrorCode.SERVER_ERROR, responseBody);
+                throw new SuhAiderException(SuhAiderErrorCode.SERVER_ERROR, responseBody);
             default:
-                throw new OllamaException(OllamaErrorCode.INVALID_RESPONSE,
+                throw new SuhAiderException(SuhAiderErrorCode.INVALID_RESPONSE,
                         "HTTP " + statusCode + ": " + responseBody);
         }
+    }
+
+    /**
+     * Security Header 설정 여부 확인
+     *
+     * @return API 키가 설정되어 있으면 true, 아니면 false
+     */
+    private boolean hasSecurityHeader() {
+        return config.getSecurity() != null
+                && StringUtils.hasText(config.getSecurity().getApiKey());
+    }
+
+    /**
+     * Request Builder에 Security Header 추가 (있는 경우에만)
+     *
+     * @param builder OkHttp Request.Builder
+     * @return 헤더가 추가된 Request.Builder
+     */
+    private Request.Builder addSecurityHeader(Request.Builder builder) {
+        if (hasSecurityHeader()) {
+            SuhAiderConfig.Security security = config.getSecurity();
+
+            // {value}를 실제 API 키로 치환
+            String headerValue = security.getHeaderValueFormat()
+                    .replace("{value}", security.getApiKey());
+
+            builder.addHeader(security.getHeaderName(), headerValue);
+
+            log.debug("Security Header 추가 - {}: {}",
+                    security.getHeaderName(),
+                    maskSensitiveValue(headerValue));
+        }
+        return builder;
+    }
+
+    /**
+     * 민감한 값 마스킹 (로그용)
+     *
+     * @param value 원본 값
+     * @return 마스킹된 값 (앞 4자리만 표시)
+     */
+    private String maskSensitiveValue(String value) {
+        if (value == null || value.length() <= 4) {
+            return "****";
+        }
+        return value.substring(0, 4) + "****";
     }
 }

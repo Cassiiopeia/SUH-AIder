@@ -7,13 +7,13 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Ollama Generate API 응답 DTO
+ * SUH-AIDER Generate API 응답 DTO
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class OllamaResponse {
+public class SuhAiderResponse {
 
     /**
      * 사용된 모델명

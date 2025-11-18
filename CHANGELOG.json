@@ -1,11 +1,34 @@
 {
   "metadata": {
-    "lastUpdated": "2025-11-17T09:26:08Z",
-    "currentVersion": "0.0.10",
+    "lastUpdated": "2025-11-18T02:06:25Z",
+    "currentVersion": "0.1.0",
     "projectType": "spring",
-    "totalReleases": 3
+    "totalReleases": 4
   },
   "releases": [
+    {
+      "version": "0.1.0",
+      "project_type": "spring",
+      "date": "2025-11-18",
+      "pr_number": 7,
+      "raw_summary": "Summary by CodeRabbit\n릴리스 노트\n\n\nBreaking Changes\n\n공개 API가 Ollama 기반 이름에서 SUH-AIDER 기반으로 변경되었습니다(서비스, DTO, 예외 포함).\n\n\n\nNew Features\n\n클래스 기반 JSON 스키마 자동 생성 기능이 추가되었습니다. @AICLASS, @AiSchema, @AiHidden, @AiArraySchema 주석을 사용하여 스키마를 정의합니다.\n보안 헤더 이름 및 형식을 커스터마이징할 수 있는 새로운 옵션이 추가되었습니다.\nAPI 키 설정이 선택사항으로 변경되었습니다.",
+      "parsed_changes": {
+        "breaking_changes": {
+          "title": "Breaking Changes",
+          "items": [
+            "공개 API가 Ollama 기반 이름에서 SUH-AIDER 기반으로 변경되었습니다(서비스, DTO, 예외 포함)."
+          ]
+        },
+        "new_features": {
+          "title": "New Features",
+          "items": [
+            "클래스 기반 JSON 스키마 자동 생성 기능이 추가되었습니다.@AICLASS, @AiSchema, @AiHidden, @AiArraySchema 주석을 사용하여 스키마를 정의합니다.",
+            "보안 헤더 이름 및 형식을 커스터마이징할 수 있는 새로운 옵션이 추가되었습니다.",
+            "API 키 설정이 선택사항으로 변경되었습니다."
+          ]
+        }
+      }
+    },
     {
       "version": "0.0.10",
       "project_type": "spring",

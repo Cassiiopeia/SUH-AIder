@@ -46,6 +46,7 @@ Ollama AI 호출
 | **응답 자동 정제** | 마크다운 코드 블록 제거 및 JSON 추출 |
 | **JSON 유효성 검증** | 응답이 유효한 JSON인지 자동 확인 |
 | **전역 설정 지원** | @Bean으로 기본 스키마 설정 가능 |
+| **클래스 기반 스키마** (v0.0.9+) | DTO 클래스로부터 자동 스키마 생성 ⭐ |
 | **하위 호환성** | 기존 코드 100% 동작 (스키마 미지정 시) |
 
 ---
@@ -213,6 +214,152 @@ JsonSchema schema = JsonSchema.builder()
 // }
 ```
 
+### 6️⃣ 클래스 기반 스키마 (v0.0.9+) ⭐
+
+**가장 권장하는 방식**: DTO 클래스에 어노테이션을 붙여서 자동으로 스키마 생성
+
+#### 어노테이션 종류
+
+| 어노테이션 | 대상 | 설명 |
+|-----------|------|------|
+| `@AiClass` | 클래스 | 스키마 제목 및 설명 정의 |
+| `@AiSchema` | 필드 | 필드 메타데이터 (설명, 제약 조건 등) |
+| `@AiHidden` | 필드 | JSON 스키마에서 제외 |
+| `@AiArraySchema` | 필드 (배열) | 배열 상세 정보 |
+
+#### 기본 사용법
+
+```java
+@AiClass(
+    title = "사용자 정보",
+    description = "회원가입 시 입력받는 사용자 기본 정보"
+)
+@Data
+public class UserResponse {
+
+    @AiSchema(
+        description = "사용자 이름",
+        required = true,
+        minLength = 2,
+        maxLength = 50,
+        example = "홍길동"
+    )
+    private String name;
+
+    @AiSchema(
+        description = "나이",
+        required = true,
+        minimum = "0",
+        maximum = "150",
+        example = "30"
+    )
+    private Integer age;
+
+    @AiSchema(
+        description = "이메일 주소",
+        format = "email",
+        pattern = "^[A-Za-z0-9+_.-]+@(.+)$"
+    )
+    private String email;
+
+    @AiHidden  // 스키마에서 제외
+    private String internalId;
+}
+
+// 사용
+JsonSchema schema = JsonSchema.fromClass(UserResponse.class);
+
+OllamaRequest request = OllamaRequest.builder()
+    .model("gemma3:4b")
+    .prompt("Extract user info from: John Doe, 30 years old, john@example.com")
+    .responseSchema(schema)
+    .build();
+
+OllamaResponse response = ollamaService.generate(request);
+
+// JSON → DTO 자동 변환
+UserResponse user = objectMapper.readValue(response.getResponse(), UserResponse.class);
+```
+
+#### 배열 필드 정의
+
+```java
+@Data
+public class UserWithInterests {
+
+    @AiSchema(description = "사용자 이름")
+    private String name;
+
+    @AiSchema(description = "관심사 목록")
+    @AiArraySchema(
+        itemType = String.class,
+        minItems = 1,
+        maxItems = 10,
+        uniqueItems = true
+    )
+    private List<String> interests;
+}
+
+// 사용
+JsonSchema schema = JsonSchema.fromClass(UserWithInterests.class);
+```
+
+#### 중첩 객체 정의
+
+```java
+@AiClass(title = "주소 정보")
+@Data
+public class Address {
+    @AiSchema(description = "도시", required = true)
+    private String city;
+
+    @AiSchema(description = "우편번호")
+    private String zipCode;
+}
+
+@AiClass(title = "사용자 상세")
+@Data
+public class UserDetail {
+    @AiSchema(description = "이름")
+    private String name;
+
+    @AiSchema(description = "주소")
+    private Address address;  // 자동으로 중첩 객체 스키마 생성
+}
+```
+
+#### allowableValues (Enum 값 제한)
+
+```java
+@Data
+public class Membership {
+
+    @AiSchema(
+        description = "회원 등급",
+        allowableValues = {"BRONZE", "SILVER", "GOLD", "PLATINUM"},
+        example = "GOLD"
+    )
+    private String level;
+}
+```
+
+#### 타입 자동 추론
+
+| Java 타입 | JSON 타입 |
+|-----------|-----------|
+| `String` | `"string"` |
+| `Integer`, `Long`, `int`, `long` | `"integer"` |
+| `Double`, `Float`, `BigDecimal` | `"number"` |
+| `Boolean`, `boolean` | `"boolean"` |
+| `List`, `Set`, `Array` | `"array"` |
+| 커스텀 클래스 | `"object"` (재귀 파싱) |
+
+**타입 명시적 지정**:
+```java
+@AiSchema(type = "string", description = "명시적 문자열")
+private Object someField;
+```
+
 ---
 
 ## 사용 예제
@@ -239,12 +386,16 @@ public class UserService {
 }
 ```
 
-### 예제 2: JSON 파싱하여 DTO로 변환
+### 예제 2: 클래스 기반 스키마 + DTO 자동 변환 (v0.0.9+) ⭐⭐⭐
 
 ```java
+@AiClass(title = "사용자 정보")
 @Data
 public class UserInfo {
+    @AiSchema(description = "이름", required = true)
     private String name;
+
+    @AiSchema(description = "나이", required = true)
     private Integer age;
 }
 
@@ -259,12 +410,12 @@ public class UserService {
         OllamaRequest request = OllamaRequest.builder()
             .model("gemma3:4b")
             .prompt("Extract name and age from: " + text)
-            .responseSchema(JsonSchema.of("name", "string", "age", "integer"))
+            .responseSchema(JsonSchema.fromClass(UserInfo.class))  // 클래스 기반
             .build();
 
         OllamaResponse response = ollamaService.generate(request);
 
-        // JSON → DTO 변환
+        // JSON → DTO 자동 변환
         return objectMapper.readValue(response.getResponse(), UserInfo.class);
     }
 }

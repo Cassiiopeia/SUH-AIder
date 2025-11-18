@@ -4,14 +4,14 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Ollama 서버 통신 중 발생 가능한 에러 코드
+ * SUH-AIDER 서버 통신 중 발생 가능한 에러 코드
  */
 @Getter
 @RequiredArgsConstructor
-public enum OllamaErrorCode {
+public enum SuhAiderErrorCode {
 
     // 설정 관련 에러
-    API_KEY_MISSING("API 키가 설정되지 않았습니다. suh.ai.api-key를 설정해주세요."),
+    API_KEY_MISSING("API 키가 설정되지 않았습니다. suh.aider.security.api-key를 설정해주세요."),
     BASE_URL_INVALID("서버 URL이 올바르지 않습니다."),
 
     // 네트워크 에러
