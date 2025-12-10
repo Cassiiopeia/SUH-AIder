@@ -1,11 +1,26 @@
 {
   "metadata": {
-    "lastUpdated": "2025-12-10T02:10:56Z",
+    "lastUpdated": "2025-12-10T02:46:13Z",
     "currentVersion": "0.1.4",
     "projectType": "spring",
-    "totalReleases": 8
+    "totalReleases": 9
   },
   "releases": [
+    {
+      "version": "0.1.4",
+      "project_type": "spring",
+      "date": "2025-12-10",
+      "pr_number": 15,
+      "raw_summary": "Summary by CodeRabbit\n\n문서\n\nREADME의 버전 배지를 v0.1.3 (2025-11-19)에서 v0.1.4 (2025-12-10)로 업데이트했습니다.\n\n\n\n✏️ Tip: You can customize this high-level summary in your review settings.",
+      "parsed_changes": {
+        "문서": {
+          "title": "문서",
+          "items": [
+            "README의 버전 배지를 v0.1.3 (2025-11-19)에서 v0.1.4 (2025-12-10)로 업데이트했습니다."
+          ]
+        }
+      }
+    },
     {
       "version": "0.1.4",
       "project_type": "spring",
