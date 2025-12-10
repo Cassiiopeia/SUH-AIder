@@ -128,34 +128,94 @@ export AI_API_KEY=your-api-key
 ```yaml
 suh:
   aider:
-    # AI 서버 기본 URL (필수)
+    #==========================================================================
+    # 기본 설정
+    #==========================================================================
+
+    # AI 서버 기본 URL
+    # 기본값: https://ai.suhsaechan.kr
+    # 로컬 Ollama 서버: http://localhost:11434
     base-url: https://ai.suhsaechan.kr
 
+    # Auto-Configuration 활성화 여부
+    # 기본값: true
+    # false로 설정하면 SUH-AIDER Bean이 생성되지 않습니다
+    enabled: true
+
+    #==========================================================================
+    # HTTP 타임아웃 설정
+    #==========================================================================
+
+    # HTTP 연결 타임아웃 (초)
+    # 기본값: 30
+    # 서버와 연결을 맺는 데 걸리는 최대 시간
+    connect-timeout: 30
+
+    # HTTP 읽기 타임아웃 (초)
+    # 기본값: 120
+    # AI 응답 생성 시간을 고려하여 긴 시간 설정 권장
+    # 큰 모델이나 긴 응답이 필요한 경우 더 늘려야 할 수 있음
+    read-timeout: 120
+
+    # HTTP 쓰기 타임아웃 (초)
+    # 기본값: 30
+    # 요청 데이터를 서버로 전송하는 최대 시간
+    write-timeout: 30
+
+    #==========================================================================
     # Security Header 설정 (선택적)
     # 인증이 필요한 서버에서만 설정하세요
+    # 설정하지 않으면 인증 헤더를 추가하지 않습니다
+    #==========================================================================
     security:
-      # HTTP 헤더 이름 (기본값: X-API-Key)
+      # HTTP 헤더 이름
+      # 기본값: X-API-Key
+      # 다른 예시: Authorization, X-Custom-Auth
       header-name: X-API-Key
 
-      # 헤더 값 포맷 (기본값: {value})
+      # 헤더 값 포맷
+      # 기본값: {value} (API 키 값 그대로)
       # {value}는 api-key 값으로 치환됩니다
+      # Bearer 토큰: "Bearer {value}"
+      # 커스텀: "CustomScheme {value}"
       header-value-format: "{value}"
 
       # API 인증 키 (선택적)
       # 설정하지 않으면 인증 헤더를 추가하지 않습니다
-      api-key: ${AI_API_KEY}
+      # 환경변수 사용 권장: ${AI_API_KEY}
+      api-key: ${AI_API_KEY:}
 
-    # HTTP 연결 타임아웃 (초, 기본: 30)
-    connect-timeout: 30
+    #==========================================================================
+    # 모델 목록 자동 갱신 설정
+    # 서버에서 사용 가능한 모델 목록을 캐싱하고 자동으로 갱신합니다
+    #==========================================================================
+    model-refresh:
+      # 초기화 시 모델 목록 로드 여부
+      # 기본값: true
+      # true: Bean 초기화 시 서버에서 모델 목록을 자동으로 로드
+      # false: 수동 호출(refreshModels()) 전까지 모델 목록 로드 안 함
+      load-on-startup: true
 
-    # HTTP 읽기 타임아웃 (초, 기본: 120)
-    read-timeout: 120
+      # 스케줄링 활성화 여부
+      # 기본값: false (기본적으로 비활성화)
+      # true: cron 표현식에 따라 자동으로 모델 목록 갱신
+      # false: 초기화 시에만 로드하고 자동 갱신하지 않음
+      scheduling-enabled: false
 
-    # HTTP 쓰기 타임아웃 (초, 기본: 30)
-    write-timeout: 30
+      # 갱신 스케줄 Cron 표현식
+      # 기본값: "0 0 4 * * *" (매일 오전 4시)
+      # 형식: 초 분 시 일 월 요일
+      # 예시:
+      #   - "0 0 4 * * *": 매일 오전 4시
+      #   - "0 0 */6 * * *": 6시간마다
+      #   - "0 0 0 * * MON": 매주 월요일 자정
+      #   - "0 30 9 * * MON-FRI": 평일 오전 9시 30분
+      cron: "0 0 4 * * *"
 
-    # Auto-Configuration 활성화 여부 (기본: true)
-    enabled: true
+      # Cron 표현식 시간대
+      # 기본값: Asia/Seoul
+      # 예시: UTC, America/New_York, Europe/London, Asia/Tokyo
+      timezone: Asia/Seoul
 ```
 
 ### Security Header 설정 예제
@@ -229,11 +289,31 @@ if (isHealthy) {
 ### 2. 모델 목록 조회
 
 ```java
+// 서버에서 직접 조회 (매번 HTTP 요청)
 ModelListResponse response = suhAiderEngine.getModels();
 response.getModels().forEach(model -> {
     System.out.println("모델: " + model.getName());
     System.out.println("크기: " + model.getSize() / 1024 / 1024 + " MB");
 });
+
+// 캐싱된 목록 조회 (HTTP 요청 없음, 빠름)
+List<ModelInfo> cachedModels = suhAiderEngine.getAvailableModels();
+cachedModels.forEach(model -> {
+    System.out.println("모델: " + model.getName());
+});
+
+// 특정 모델 사용 가능 여부 확인
+boolean available = suhAiderEngine.isModelAvailable("gemma3:4b");
+
+// 특정 모델 상세 정보 가져오기
+Optional<ModelInfo> modelInfo = suhAiderEngine.getModelInfo("gemma3:4b");
+modelInfo.ifPresent(info -> {
+    System.out.println("모델명: " + info.getName());
+    System.out.println("파라미터: " + info.getDetails().getParameterSize());
+});
+
+// 모델 목록 수동 갱신
+boolean success = suhAiderEngine.refreshModels();
 ```
 
 ### 3. AI 텍스트 생성 (간편)
@@ -384,10 +464,41 @@ AI 서버의 상태를 확인합니다.
 **반환값**: 서버가 정상이면 `true`, 아니면 `false`
 
 #### `ModelListResponse getModels()`
-설치된 모델 목록을 조회합니다.
+설치된 모델 목록을 서버에서 직접 조회합니다. (매번 HTTP 요청 발생)
 
 **반환값**: `ModelListResponse` (모델 목록 포함)
 **예외**: `SuhAiderException`
+
+#### `List<ModelInfo> getAvailableModels()`
+캐싱된 모델 목록을 반환합니다. HTTP 요청 없이 빠르게 조회할 수 있습니다.
+
+**반환값**: 불변 `List<ModelInfo>` (빈 리스트 가능)
+
+#### `boolean isModelAvailable(String modelName)`
+특정 모델이 사용 가능한지 확인합니다.
+
+**파라미터**:
+- `modelName`: 확인할 모델명 (예: `"gemma3:4b"`)
+
+**반환값**: 사용 가능하면 `true`. 모델 목록이 초기화되지 않았으면 항상 `true` (서버에서 최종 검증)
+
+#### `Optional<ModelInfo> getModelInfo(String modelName)`
+캐싱된 목록에서 특정 모델의 상세 정보를 가져옵니다.
+
+**파라미터**:
+- `modelName`: 조회할 모델명 (예: `"gemma3:4b"`)
+
+**반환값**: `Optional<ModelInfo>` (없으면 empty)
+
+#### `boolean refreshModels()`
+모델 목록을 수동으로 갱신합니다. 스케줄러를 사용하지 않을 때 직접 호출하여 갱신할 수 있습니다.
+
+**반환값**: 갱신 성공하면 `true`
+
+#### `boolean isModelsInitialized()`
+모델 목록이 초기화(로드)되었는지 확인합니다.
+
+**반환값**: 초기화 완료되었으면 `true`
 
 #### `SuhAiderResponse generate(SuhAiderRequest request)`
 AI 텍스트를 생성합니다 (상세 옵션 지원).

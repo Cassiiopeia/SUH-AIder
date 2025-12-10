@@ -76,4 +76,50 @@ public class SuhAiderConfig {
          */
         private String apiKey;
     }
+
+    /**
+     * 모델 목록 자동 갱신 설정
+     */
+    private ModelRefresh modelRefresh = new ModelRefresh();
+
+    /**
+     * 모델 목록 자동 갱신 설정 클래스
+     */
+    @Data
+    public static class ModelRefresh {
+
+        /**
+         * 초기화 시 모델 목록 로드 여부
+         * 기본값: true
+         * true: Bean 초기화 시 서버에서 모델 목록을 로드합니다
+         * false: 모델 목록을 로드하지 않습니다 (수동 호출 필요)
+         */
+        private boolean loadOnStartup = true;
+
+        /**
+         * 스케줄링 활성화 여부
+         * 기본값: false
+         * true: 지정된 cron 표현식에 따라 자동으로 모델 목록을 갱신합니다
+         * false: 자동 갱신하지 않습니다 (수동 호출 또는 초기화 시에만 로드)
+         */
+        private boolean schedulingEnabled = false;
+
+        /**
+         * 갱신 스케줄 Cron 표현식
+         * 기본값: "0 0 4 * * *" (매일 오전 4시)
+         * 형식: 초 분 시 일 월 요일
+         * 예시:
+         *   - "0 0 4 * * *": 매일 오전 4시
+         *   - "0 0 */6 * * *": 6시간마다
+         *   - "0 0 0 * * MON": 매주 월요일 자정
+         */
+        private String cron = "0 0 4 * * *";
+
+        /**
+         * Cron 표현식 시간대
+         * 기본값: Asia/Seoul
+         * 예시: UTC, America/New_York, Europe/London
+         */
+        private String timezone = "Asia/Seoul";
+    }
 }

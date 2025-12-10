@@ -8,6 +8,7 @@ import kr.suhsaechan.ai.config.SuhAiderCustomizer;
 import kr.suhsaechan.ai.exception.SuhAiderErrorCode;
 import kr.suhsaechan.ai.exception.SuhAiderException;
 import kr.suhsaechan.ai.model.JsonSchema;
+import kr.suhsaechan.ai.model.ModelInfo;
 import kr.suhsaechan.ai.model.ModelListResponse;
 import kr.suhsaechan.ai.model.SuhAiderRequest;
 import kr.suhsaechan.ai.model.SuhAiderResponse;
@@ -30,6 +31,10 @@ import org.springframework.util.StringUtils;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -50,6 +55,16 @@ public class SuhAiderEngine {
     private final SuhAiderCustomizer customizer;
 
     /**
+     * 캐싱된 사용 가능한 모델 목록
+     */
+    private List<ModelInfo> availableModels = new ArrayList<>();
+
+    /**
+     * 모델 목록 초기화 완료 여부
+     */
+    private volatile boolean modelsInitialized = false;
+
+    /**
      * 생성자 주입 (Customizer는 선택적)
      */
     public SuhAiderEngine(
@@ -65,7 +80,7 @@ public class SuhAiderEngine {
     }
 
     /**
-     * 초기화 시점에 설정 검증
+     * 초기화 시점에 설정 검증 및 모델 목록 로드
      */
     @PostConstruct
     public void init() {
@@ -79,7 +94,138 @@ public class SuhAiderEngine {
             log.info("Security Header 설정됨 - header: {}", config.getSecurity().getHeaderName());
         }
 
+        // 모델 목록 초기화 (설정에 따라)
+        if (config.getModelRefresh().isLoadOnStartup()) {
+            initializeModels();
+        } else {
+            log.info("모델 목록 초기화 건너뜀 (load-on-startup: false)");
+        }
+
+        // 스케줄링 설정 로그
+        if (config.getModelRefresh().isSchedulingEnabled()) {
+            log.info("모델 목록 자동 갱신 스케줄링 활성화 - cron: {}, timezone: {}",
+                    config.getModelRefresh().getCron(),
+                    config.getModelRefresh().getTimezone());
+        }
+
         log.info("SuhAiderEngine 초기화 완료");
+    }
+
+    /**
+     * 서버에서 모델 목록을 가져와서 캐싱
+     * 초기화 시점 또는 스케줄링에 의해 호출됩니다.
+     */
+    private void initializeModels() {
+        try {
+            log.info("사용 가능한 모델 목록 로딩 중...");
+
+            ModelListResponse response = getModels();
+
+            if (response.getModels() != null && !response.getModels().isEmpty()) {
+                this.availableModels = new ArrayList<>(response.getModels());
+                this.modelsInitialized = true;
+
+                log.info("모델 목록 로드 완료 - 총 {}개", availableModels.size());
+                availableModels.forEach(model ->
+                        log.debug("  - {}: {} ({})",
+                                model.getName(),
+                                model.getDetails() != null ?
+                                        model.getDetails().getParameterSize() : "N/A",
+                                formatSize(model.getSize())
+                        )
+                );
+            } else {
+                log.warn("서버에서 모델 목록을 가져왔으나 비어있습니다");
+            }
+
+        } catch (Exception e) {
+            log.error("모델 목록 초기화 실패: {}", e.getMessage());
+            log.warn("모델 검증 없이 진행합니다 (요청 시 서버에서 검증됨)");
+        }
+    }
+
+    /**
+     * 사용 가능한 모델 목록 반환 (캐시된 데이터)
+     *
+     * @return 모델 목록 (불변 리스트, 빈 리스트 가능)
+     */
+    public List<ModelInfo> getAvailableModels() {
+        return Collections.unmodifiableList(availableModels);
+    }
+
+    /**
+     * 특정 모델이 사용 가능한지 확인
+     *
+     * @param modelName 모델명
+     * @return 사용 가능하면 true, 목록이 초기화되지 않았으면 항상 true (서버에서 검증)
+     */
+    public boolean isModelAvailable(String modelName) {
+        if (!modelsInitialized) {
+            log.debug("모델 목록이 초기화되지 않았습니다 - 서버에서 검증됩니다");
+            return true;
+        }
+
+        return availableModels.stream()
+                .anyMatch(model -> model.getName().equals(modelName));
+    }
+
+    /**
+     * 모델 이름으로 상세 정보 가져오기
+     *
+     * @param modelName 모델명
+     * @return 모델 정보 (없으면 empty)
+     */
+    public Optional<ModelInfo> getModelInfo(String modelName) {
+        return availableModels.stream()
+                .filter(model -> model.getName().equals(modelName))
+                .findFirst();
+    }
+
+    /**
+     * 모델 목록 수동 갱신
+     * 스케줄러 또는 외부에서 호출하여 모델 목록을 갱신합니다.
+     *
+     * @return 갱신 성공 여부
+     */
+    public boolean refreshModels() {
+        log.info("모델 목록 수동 갱신 시작");
+        try {
+            initializeModels();
+            return modelsInitialized;
+        } catch (Exception e) {
+            log.error("모델 목록 갱신 실패: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 모델 목록 초기화 완료 여부
+     *
+     * @return 초기화 완료되었으면 true
+     */
+    public boolean isModelsInitialized() {
+        return modelsInitialized;
+    }
+
+    /**
+     * 파일 크기 포맷팅 (사람이 읽기 쉽게)
+     *
+     * @param bytes 바이트 크기
+     * @return 포맷된 문자열 (예: "7.03 GB")
+     */
+    private String formatSize(Long bytes) {
+        if (bytes == null) return "N/A";
+
+        if (bytes < 1024) return bytes + " B";
+
+        double kb = bytes / 1024.0;
+        if (kb < 1024) return String.format("%.2f KB", kb);
+
+        double mb = kb / 1024.0;
+        if (mb < 1024) return String.format("%.2f MB", mb);
+
+        double gb = mb / 1024.0;
+        return String.format("%.2f GB", gb);
     }
 
     /**
