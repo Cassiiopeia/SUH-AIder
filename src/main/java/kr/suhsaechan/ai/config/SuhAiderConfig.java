@@ -110,7 +110,6 @@ public class SuhAiderConfig {
          * 형식: 초 분 시 일 월 요일
          * 예시:
          *   - "0 0 4 * * *": 매일 오전 4시
-         *   - "0 0 */6 * * *": 6시간마다
          *   - "0 0 0 * * MON": 매주 월요일 자정
          */
         private String cron = "0 0 4 * * *";
