@@ -7,6 +7,9 @@ import kr.suhsaechan.ai.config.SuhAiderConfig;
 import kr.suhsaechan.ai.config.SuhAiderCustomizer;
 import kr.suhsaechan.ai.exception.SuhAiderErrorCode;
 import kr.suhsaechan.ai.exception.SuhAiderException;
+import kr.suhsaechan.ai.model.ChunkingConfig;
+import kr.suhsaechan.ai.model.EmbeddingRequest;
+import kr.suhsaechan.ai.model.EmbeddingResponse;
 import kr.suhsaechan.ai.model.JsonSchema;
 import kr.suhsaechan.ai.model.ModelInfo;
 import kr.suhsaechan.ai.model.ModelListResponse;
@@ -14,6 +17,7 @@ import kr.suhsaechan.ai.model.SuhAiderRequest;
 import kr.suhsaechan.ai.model.SuhAiderResponse;
 import kr.suhsaechan.ai.util.JsonResponseCleaner;
 import kr.suhsaechan.ai.util.PromptEnhancer;
+import kr.suhsaechan.ai.util.TextChunker;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -44,6 +48,7 @@ import java.util.concurrent.CompletableFuture;
  * 2. 모델 목록 조회
  * 3. Generate API (프롬프트 → 응답 생성)
  * 4. Generate Stream API (스트리밍 응답)
+ * 5. Embedding API (텍스트 임베딩 생성)
  */
 @Service
 @Slf4j
@@ -658,6 +663,184 @@ public class SuhAiderEngine {
      */
     public CompletableFuture<Void> generateStreamAsync(String model, String prompt, StreamCallback callback) {
         return CompletableFuture.runAsync(() -> generateStream(model, prompt, callback));
+    }
+
+    // ========== Embedding API (Ollama /api/embed) ==========
+
+    /**
+     * 단일 텍스트 임베딩 (간편)
+     *
+     * @param model 임베딩 모델명 (예: "nomic-embed-text")
+     * @param text 임베딩할 텍스트
+     * @return 임베딩 벡터
+     */
+    public List<Double> embed(String model, String text) {
+        EmbeddingResponse response = embed(EmbeddingRequest.builder()
+                .model(model)
+                .input(text)
+                .build());
+        return response.getEmbeddings().get(0);
+    }
+
+    /**
+     * 배치 임베딩 (간편)
+     * 여러 텍스트를 한 번에 임베딩
+     *
+     * @param model 임베딩 모델명
+     * @param texts 임베딩할 텍스트 목록
+     * @return 각 텍스트에 대응하는 임베딩 벡터 목록
+     */
+    public List<List<Double>> embed(String model, List<String> texts) {
+        EmbeddingResponse response = embed(EmbeddingRequest.builder()
+                .model(model)
+                .input(texts)
+                .build());
+        return response.getEmbeddings();
+    }
+
+    /**
+     * 임베딩 (상세 옵션)
+     * POST /api/embed (Ollama 권장 엔드포인트)
+     *
+     * @param request EmbeddingRequest (model, input 필수)
+     * @return EmbeddingResponse (임베딩 벡터 포함)
+     * @throws SuhAiderException 네트워크 오류 또는 파싱 오류 시
+     */
+    public EmbeddingResponse embed(EmbeddingRequest request) {
+        log.debug("Embed 호출 - model: {}", request.getModel());
+
+        // 파라미터 검증
+        if (!StringUtils.hasText(request.getModel())) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다");
+        }
+        if (request.getInput() == null) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "input이 비어있습니다");
+        }
+
+        // 기본값 적용 (config에서)
+        EmbeddingRequest effectiveRequest = applyEmbeddingDefaults(request);
+
+        String url = config.getBaseUrl() + "/api/embed";  // 권장 엔드포인트
+
+        try {
+            String jsonPayload = objectMapper.writeValueAsString(effectiveRequest);
+            log.debug("Embed 요청 페이로드: {}", jsonPayload);
+
+            RequestBody body = RequestBody.create(
+                    jsonPayload,
+                    MediaType.parse("application/json; charset=utf-8")
+            );
+
+            Request httpRequest = addSecurityHeader(new Request.Builder())
+                    .url(url)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build();
+
+            try (Response response = httpClient.newCall(httpRequest).execute()) {
+                String responseBody = response.body() != null ? response.body().string() : "";
+
+                if (!response.isSuccessful()) {
+                    log.error("Embed 실패 - HTTP {}: {}", response.code(), responseBody);
+                    handleHttpError(response.code(), responseBody);
+                }
+
+                if (!StringUtils.hasText(responseBody)) {
+                    throw new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE);
+                }
+
+                EmbeddingResponse embeddingResponse = objectMapper.readValue(responseBody, EmbeddingResponse.class);
+
+                log.info("Embed 완료 - 벡터 개수: {}, 처리 시간: {}ms",
+                        embeddingResponse.getEmbeddings() != null ? embeddingResponse.getEmbeddings().size() : 0,
+                        embeddingResponse.getTotalDuration() != null ? embeddingResponse.getTotalDuration() / 1_000_000 : 0);
+
+                return embeddingResponse;
+            }
+
+        } catch (SocketTimeoutException e) {
+            log.error("Embed 타임아웃: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.READ_TIMEOUT, e);
+        } catch (JsonProcessingException e) {
+            log.error("JSON 처리 실패: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e);
+        } catch (IOException e) {
+            log.error("Embed 네트워크 오류: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e);
+        }
+    }
+
+    /**
+     * 청킹 + 임베딩 (긴 텍스트용)
+     * 설정된 청킹 전략에 따라 텍스트를 분할하고 각각 임베딩
+     *
+     * @param model 임베딩 모델명
+     * @param text 임베딩할 텍스트 (긴 텍스트 가능)
+     * @param chunkingConfig 청킹 설정
+     * @return EmbeddingResponse (각 청크의 임베딩 벡터 포함)
+     */
+    public EmbeddingResponse embedWithChunking(String model, String text, ChunkingConfig chunkingConfig) {
+        // 청킹 수행
+        List<String> chunks = TextChunker.chunk(text, chunkingConfig);
+        log.debug("청킹 완료 - 원본: {}자, {}개 청크 생성", text.length(), chunks.size());
+
+        // 청크들을 배치로 임베딩
+        return embed(EmbeddingRequest.builder()
+                .model(model)
+                .input(chunks)
+                .build());
+    }
+
+    /**
+     * 청킹 + 임베딩 (설정 기반)
+     * application.yml의 suh.aider.embedding.chunking 설정 사용
+     *
+     * @param model 임베딩 모델명
+     * @param text 임베딩할 텍스트
+     * @return EmbeddingResponse
+     */
+    public EmbeddingResponse embedWithChunking(String model, String text) {
+        ChunkingConfig chunkingConfig = buildChunkingConfigFromProperties();
+        return embedWithChunking(model, text, chunkingConfig);
+    }
+
+    /**
+     * 기본 모델로 청킹 + 임베딩
+     * application.yml의 기본 모델과 청킹 설정 사용
+     *
+     * @param text 임베딩할 텍스트
+     * @return EmbeddingResponse
+     */
+    public EmbeddingResponse embedWithChunking(String text) {
+        String defaultModel = config.getEmbedding().getDefaultModel();
+        return embedWithChunking(defaultModel, text);
+    }
+
+    /**
+     * 임베딩 요청에 기본값 적용
+     */
+    private EmbeddingRequest applyEmbeddingDefaults(EmbeddingRequest request) {
+        SuhAiderConfig.Embedding embeddingConfig = config.getEmbedding();
+
+        return request.toBuilder()
+                .truncate(request.getTruncate() != null ? request.getTruncate() : embeddingConfig.isTruncate())
+                .keepAlive(request.getKeepAlive() != null ? request.getKeepAlive() : embeddingConfig.getKeepAlive())
+                .dimensions(request.getDimensions() != null ? request.getDimensions() : embeddingConfig.getDimensions())
+                .chunkingConfig(null)  // API로 전송 안 함
+                .build();
+    }
+
+    /**
+     * application.yml 설정에서 ChunkingConfig 빌드
+     */
+    private ChunkingConfig buildChunkingConfigFromProperties() {
+        SuhAiderConfig.Embedding.Chunking props = config.getEmbedding().getChunking();
+        return ChunkingConfig.builder()
+                .enabled(props.isEnabled())
+                .strategy(ChunkingConfig.Strategy.valueOf(props.getStrategy()))
+                .chunkSize(props.getChunkSize())
+                .overlapSize(props.getOverlapSize())
+                .build();
     }
 
     /**

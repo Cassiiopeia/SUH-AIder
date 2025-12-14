@@ -1,11 +1,73 @@
 {
   "metadata": {
-    "lastUpdated": "2025-12-10T02:46:13Z",
-    "currentVersion": "0.1.4",
+    "lastUpdated": "2025-12-14T14:59:52Z",
+    "currentVersion": "0.2.0",
     "projectType": "spring",
-    "totalReleases": 9
+    "totalReleases": 11
   },
   "releases": [
+    {
+      "version": "0.2.0",
+      "project_type": "spring",
+      "date": "2025-12-14",
+      "pr_number": 21,
+      "raw_summary": "## Summary by CodeRabbit\n\n## v0.2.0 릴리스 노트\n\n* **새 기능**\n  * 텍스트 임베딩 API 지원 (단일/배치 임베딩)\n  * 텍스트 청킹 기능 (고정 크기, 문장, 단락 기반 전략)\n  * 임베딩 모델 설정 및 커스터마이징 옵션\n\n* **문서**\n  * 임베딩 API 사용 가이드\n  * 청킹 설정 및 구성 문서\n\n* **기타**\n  * 임베딩 관련 에러 처리 코드 추가",
+      "parsed_changes": {
+        "새_기능": {
+          "title": "새 기능",
+          "items": [
+            "텍스트 임베딩 API 지원 (단일/배치 임베딩)",
+            "텍스트 청킹 기능 (고정 크기, 문장, 단락 기반 전략)",
+            "임베딩 모델 설정 및 커스터마이징 옵션"
+          ]
+        },
+        "문서": {
+          "title": "문서",
+          "items": [
+            "임베딩 API 사용 가이드",
+            "청킹 설정 및 구성 문서"
+          ]
+        },
+        "기타": {
+          "title": "기타",
+          "items": [
+            "임베딩 관련 에러 처리 코드 추가"
+          ]
+        }
+      },
+      "parse_method": "markdown"
+    },
+    {
+      "version": "0.1.5",
+      "project_type": "spring",
+      "date": "2025-12-10",
+      "pr_number": 16,
+      "raw_summary": "Summary by CodeRabbit\n릴리스 노트\n\n\n새 기능\n\n스트리밍 응답 지원\n자동 모델 새로고침\n확장된 모델 API\n모델 캐싱 및 관리\n\n\n\n문서\n\nREADME 배지 업데이트\n변경 로그 업데이트\n\n\n\n기타\n\n버전 0.1.5로 업그레이드\n\n\n\n✏️ Tip: You can customize this high-level summary in your review settings.",
+      "parsed_changes": {
+        "새_기능": {
+          "title": "새 기능",
+          "items": [
+            "스트리밍 응답 지원",
+            "자동 모델 새로고침",
+            "확장된 모델 API",
+            "모델 캐싱 및 관리"
+          ]
+        },
+        "문서": {
+          "title": "문서",
+          "items": [
+            "README 배지 업데이트",
+            "변경 로그 업데이트"
+          ]
+        },
+        "기타": {
+          "title": "기타",
+          "items": [
+            "버전 0.1.5로 업그레이드"
+          ]
+        }
+      }
+    },
     {
       "version": "0.1.4",
       "project_type": "spring",
