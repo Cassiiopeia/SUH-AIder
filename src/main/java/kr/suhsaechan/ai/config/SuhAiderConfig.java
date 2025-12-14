@@ -135,9 +135,9 @@ public class SuhAiderConfig {
 
         /**
          * 기본 임베딩 모델
-         * 기본값: nomic-embed-text
+         * 기본값: embeddinggemma:latest
          */
-        private String defaultModel = "nomic-embed-text";
+        private String defaultModel = "embeddinggemma:latest";
 
         /**
          * 컨텍스트 초과 시 입력 자르기
