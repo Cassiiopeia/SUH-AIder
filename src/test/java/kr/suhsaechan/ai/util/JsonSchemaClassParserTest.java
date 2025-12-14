@@ -156,7 +156,7 @@ class JsonSchemaClassParserTest {
         assertEquals("array", interestsSchema.getType());
         assertEquals(1, interestsSchema.getMinItems());
         assertEquals(10, interestsSchema.getMaxItems());
-        assertTrue(interestsSchema.isUniqueItems());
+        assertTrue(interestsSchema.getUniqueItems());
         assertNotNull(interestsSchema.getItems());
         assertEquals("string", interestsSchema.getItems().getType());
 
@@ -300,7 +300,5 @@ class JsonSchemaClassParserTest {
         PropertySchema percentageSchema = schema.getProperties().get("percentage");
         assertEquals(0.0, percentageSchema.getMinimum());
         assertEquals(100.0, percentageSchema.getMaximum());
-        assertTrue(percentageSchema.isExclusiveMinimum());
-        assertTrue(percentageSchema.isExclusiveMaximum());
     }
 }

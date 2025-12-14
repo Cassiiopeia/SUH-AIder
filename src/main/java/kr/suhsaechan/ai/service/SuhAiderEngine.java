@@ -7,6 +7,9 @@ import kr.suhsaechan.ai.config.SuhAiderConfig;
 import kr.suhsaechan.ai.config.SuhAiderCustomizer;
 import kr.suhsaechan.ai.exception.SuhAiderErrorCode;
 import kr.suhsaechan.ai.exception.SuhAiderException;
+import kr.suhsaechan.ai.model.ChatMessage;
+import kr.suhsaechan.ai.model.ChatRequest;
+import kr.suhsaechan.ai.model.ChatResponse;
 import kr.suhsaechan.ai.model.ChunkingConfig;
 import kr.suhsaechan.ai.model.EmbeddingRequest;
 import kr.suhsaechan.ai.model.EmbeddingResponse;
@@ -49,6 +52,7 @@ import java.util.concurrent.CompletableFuture;
  * 3. Generate API (프롬프트 → 응답 생성)
  * 4. Generate Stream API (스트리밍 응답)
  * 5. Embedding API (텍스트 임베딩 생성)
+ * 6. Chat API (대화형 세션 지원)
  */
 @Service
 @Slf4j
@@ -665,6 +669,322 @@ public class SuhAiderEngine {
         return CompletableFuture.runAsync(() -> generateStream(model, prompt, callback));
     }
 
+    // ========== Chat API (Ollama /api/chat) ==========
+
+    /**
+     * 대화형 AI 응답 생성 (Chat API)
+     * POST /api/chat
+     *
+     * <p>이전 대화 기록을 포함하여 AI와 대화합니다.
+     * messages 배열에 이전 대화를 포함하면 컨텍스트가 유지됩니다.</p>
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * // 대화 기록 포함
+     * ChatRequest request = ChatRequest.builder()
+     *     .model("llama3")
+     *     .messages(List.of(
+     *         ChatMessage.system("너는 친절한 어시스턴트야"),
+     *         ChatMessage.user("안녕?"),
+     *         ChatMessage.assistant("안녕하세요!"),
+     *         ChatMessage.user("방금 뭐라고 했어?")
+     *     ))
+     *     .build();
+     *
+     * ChatResponse response = engine.chat(request);
+     * System.out.println(response.getContent());
+     * </pre>
+     *
+     * @param request ChatRequest (model, messages 필수)
+     * @return ChatResponse (AI 응답 메시지 포함)
+     * @throws SuhAiderException 네트워크 오류 또는 파싱 오류 시
+     */
+    public ChatResponse chat(ChatRequest request) {
+        log.debug("Chat 호출 - 모델: {}, 메시지 수: {}",
+                request.getModel(),
+                request.getMessages() != null ? request.getMessages().size() : 0);
+
+        // 파라미터 검증
+        if (!StringUtils.hasText(request.getModel())) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다");
+        }
+        if (request.getMessages() == null || request.getMessages().isEmpty()) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "메시지가 비어있습니다");
+        }
+
+        // responseSchema가 있으면 format으로 변환
+        ChatRequest effectiveRequest = request;
+        if (request.getResponseSchema() != null && request.getFormat() == null) {
+            effectiveRequest = request.toBuilder()
+                    .format(request.getResponseSchema().toFormatObject())
+                    .responseSchema(null)
+                    .build();
+            log.debug("responseSchema를 format으로 변환");
+        }
+
+        String url = config.getBaseUrl() + "/api/chat";
+
+        try {
+            String jsonPayload = objectMapper.writeValueAsString(effectiveRequest);
+            log.debug("Chat 요청 페이로드: {}", jsonPayload);
+
+            RequestBody body = RequestBody.create(
+                    jsonPayload,
+                    MediaType.parse("application/json; charset=utf-8")
+            );
+
+            Request httpRequest = addSecurityHeader(new Request.Builder())
+                    .url(url)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build();
+
+            try (Response response = httpClient.newCall(httpRequest).execute()) {
+                String responseBody = response.body() != null ? response.body().string() : "";
+
+                if (!response.isSuccessful()) {
+                    log.error("Chat 실패 - HTTP {}: {}", response.code(), responseBody);
+                    handleHttpError(response.code(), responseBody);
+                }
+
+                if (!StringUtils.hasText(responseBody)) {
+                    throw new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE);
+                }
+
+                ChatResponse chatResponse = objectMapper.readValue(responseBody, ChatResponse.class);
+
+                log.info("Chat 완료 - 응답 길이: {}, 처리 시간: {}ms",
+                        chatResponse.getContent() != null ? chatResponse.getContent().length() : 0,
+                        chatResponse.getTotalDurationMs() != null ? chatResponse.getTotalDurationMs() : 0);
+
+                return chatResponse;
+            }
+
+        } catch (SocketTimeoutException e) {
+            log.error("Chat 타임아웃: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.READ_TIMEOUT, e);
+        } catch (JsonProcessingException e) {
+            log.error("JSON 처리 실패: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e);
+        } catch (IOException e) {
+            log.error("Chat 네트워크 오류: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e);
+        }
+    }
+
+    /**
+     * 간편 Chat 메서드
+     * 모델명과 메시지 목록으로 바로 응답을 받습니다.
+     *
+     * @param model 모델명 (예: "llama3", "mistral")
+     * @param messages 대화 메시지 목록
+     * @return ChatResponse
+     */
+    public ChatResponse chat(String model, List<ChatMessage> messages) {
+        ChatRequest request = ChatRequest.builder()
+                .model(model)
+                .messages(messages)
+                .stream(false)
+                .build();
+
+        return chat(request);
+    }
+
+    /**
+     * 단일 메시지 Chat (간편)
+     * 대화 기록 없이 단일 질문에 대한 응답을 받습니다.
+     *
+     * @param model 모델명
+     * @param userMessage 사용자 메시지
+     * @return AI 응답 텍스트
+     */
+    public String chat(String model, String userMessage) {
+        ChatResponse response = chat(model, List.of(ChatMessage.user(userMessage)));
+        return response.getContent();
+    }
+
+    /**
+     * 시스템 프롬프트 포함 Chat (간편)
+     *
+     * @param model 모델명
+     * @param systemPrompt 시스템 지시문
+     * @param userMessage 사용자 메시지
+     * @return AI 응답 텍스트
+     */
+    public String chat(String model, String systemPrompt, String userMessage) {
+        ChatResponse response = chat(model, List.of(
+                ChatMessage.system(systemPrompt),
+                ChatMessage.user(userMessage)
+        ));
+        return response.getContent();
+    }
+
+    /**
+     * 대화형 AI 응답 생성 (스트리밍)
+     * POST /api/chat (stream: true)
+     *
+     * <p>AI가 토큰을 생성할 때마다 실시간으로 콜백이 호출됩니다.</p>
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * engine.chatStream(request, new StreamCallback() {
+     *     &#64;Override
+     *     public void onNext(String chunk) {
+     *         System.out.print(chunk);  // 실시간 출력
+     *     }
+     *
+     *     &#64;Override
+     *     public void onComplete() {
+     *         System.out.println("\n완료!");
+     *     }
+     *
+     *     &#64;Override
+     *     public void onError(Throwable error) {
+     *         System.err.println("에러: " + error.getMessage());
+     *     }
+     * });
+     * </pre>
+     *
+     * @param request ChatRequest (model, messages 필수)
+     * @param callback 스트리밍 콜백
+     */
+    public void chatStream(ChatRequest request, StreamCallback callback) {
+        log.debug("Chat Stream 호출 - 모델: {}, 메시지 수: {}",
+                request.getModel(),
+                request.getMessages() != null ? request.getMessages().size() : 0);
+
+        // 파라미터 검증
+        if (!StringUtils.hasText(request.getModel())) {
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다"));
+            return;
+        }
+        if (request.getMessages() == null || request.getMessages().isEmpty()) {
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "메시지가 비어있습니다"));
+            return;
+        }
+
+        // stream: true 강제 설정
+        ChatRequest streamRequest = request.toBuilder()
+                .stream(true)
+                .build();
+
+        String url = config.getBaseUrl() + "/api/chat";
+
+        try {
+            String jsonPayload = objectMapper.writeValueAsString(streamRequest);
+            log.debug("Chat Stream 요청 페이로드: {}", jsonPayload);
+
+            RequestBody body = RequestBody.create(
+                    jsonPayload,
+                    MediaType.parse("application/json; charset=utf-8")
+            );
+
+            Request httpRequest = addSecurityHeader(new Request.Builder())
+                    .url(url)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build();
+
+            try (Response response = httpClient.newCall(httpRequest).execute()) {
+                if (!response.isSuccessful()) {
+                    String responseBody = response.body() != null ? response.body().string() : "";
+                    log.error("Chat Stream 실패 - HTTP {}: {}", response.code(), responseBody);
+                    handleHttpErrorForCallback(response.code(), responseBody, callback);
+                    return;
+                }
+
+                ResponseBody responseBody = response.body();
+                if (responseBody == null) {
+                    callback.onError(new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE));
+                    return;
+                }
+
+                // 스트림 처리
+                BufferedSource source = responseBody.source();
+
+                while (!source.exhausted()) {
+                    String line = source.readUtf8Line();
+
+                    if (line == null || line.trim().isEmpty()) {
+                        continue;
+                    }
+
+                    try {
+                        JsonNode node = objectMapper.readTree(line);
+
+                        // Chat API는 message.content에 응답이 있음
+                        if (node.has("message") && node.get("message").has("content")) {
+                            String chunk = node.get("message").get("content").asText("");
+                            if (!chunk.isEmpty()) {
+                                callback.onNext(chunk);
+                            }
+                        }
+
+                        if (node.has("done") && node.get("done").asBoolean(false)) {
+                            log.info("Chat Stream 완료");
+                            callback.onComplete();
+                            break;
+                        }
+
+                    } catch (JsonProcessingException e) {
+                        log.warn("청크 파싱 실패 (건너뜀): {}", line);
+                    }
+                }
+            }
+
+        } catch (SocketTimeoutException e) {
+            log.error("Chat Stream 타임아웃: {}", e.getMessage());
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.READ_TIMEOUT, e));
+        } catch (JsonProcessingException e) {
+            log.error("JSON 처리 실패: {}", e.getMessage());
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e));
+        } catch (IOException e) {
+            log.error("Chat Stream 네트워크 오류: {}", e.getMessage());
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e));
+        }
+    }
+
+    /**
+     * 간편 Chat 스트리밍
+     *
+     * @param model 모델명
+     * @param messages 대화 메시지 목록
+     * @param callback 스트리밍 콜백
+     */
+    public void chatStream(String model, List<ChatMessage> messages, StreamCallback callback) {
+        ChatRequest request = ChatRequest.builder()
+                .model(model)
+                .messages(messages)
+                .stream(true)
+                .build();
+
+        chatStream(request, callback);
+    }
+
+    /**
+     * 비동기 Chat 스트리밍
+     * 백그라운드 스레드에서 스트리밍을 처리합니다.
+     *
+     * @param request ChatRequest
+     * @param callback 스트리밍 콜백
+     * @return CompletableFuture (완료 시점 추적용)
+     */
+    public CompletableFuture<Void> chatStreamAsync(ChatRequest request, StreamCallback callback) {
+        return CompletableFuture.runAsync(() -> chatStream(request, callback));
+    }
+
+    /**
+     * 간편 비동기 Chat 스트리밍
+     *
+     * @param model 모델명
+     * @param messages 대화 메시지 목록
+     * @param callback 스트리밍 콜백
+     * @return CompletableFuture
+     */
+    public CompletableFuture<Void> chatStreamAsync(String model, List<ChatMessage> messages, StreamCallback callback) {
+        return CompletableFuture.runAsync(() -> chatStream(model, messages, callback));
+    }
+
     // ========== Embedding API (Ollama /api/embed) ==========
 
     /**
@@ -679,6 +999,9 @@ public class SuhAiderEngine {
                 .model(model)
                 .input(text)
                 .build());
+        if (response.getEmbeddings() == null || response.getEmbeddings().isEmpty()) {
+            throw new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE, "임베딩 결과가 비어있습니다");
+        }
         return response.getEmbeddings().get(0);
     }
 
@@ -695,6 +1018,9 @@ public class SuhAiderEngine {
                 .model(model)
                 .input(texts)
                 .build());
+        if (response.getEmbeddings() == null) {
+            throw new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE, "임베딩 결과가 비어있습니다");
+        }
         return response.getEmbeddings();
     }
 
@@ -835,9 +1161,18 @@ public class SuhAiderEngine {
      */
     private ChunkingConfig buildChunkingConfigFromProperties() {
         SuhAiderConfig.Embedding.Chunking props = config.getEmbedding().getChunking();
+
+        ChunkingConfig.Strategy strategy;
+        try {
+            strategy = ChunkingConfig.Strategy.valueOf(props.getStrategy());
+        } catch (IllegalArgumentException e) {
+            log.warn("잘못된 청킹 전략: {}. 기본값 FIXED_SIZE 사용", props.getStrategy());
+            strategy = ChunkingConfig.Strategy.FIXED_SIZE;
+        }
+
         return ChunkingConfig.builder()
                 .enabled(props.isEnabled())
-                .strategy(ChunkingConfig.Strategy.valueOf(props.getStrategy()))
+                .strategy(strategy)
                 .chunkSize(props.getChunkSize())
                 .overlapSize(props.getOverlapSize())
                 .build();
