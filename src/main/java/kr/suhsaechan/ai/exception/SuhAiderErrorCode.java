@@ -31,7 +31,11 @@ public enum SuhAiderErrorCode {
 
     // 인증 에러
     UNAUTHORIZED("API 키가 올바르지 않습니다."),
-    FORBIDDEN("접근 권한이 없습니다.");
+    FORBIDDEN("접근 권한이 없습니다."),
+
+    // 임베딩 에러
+    EMBEDDING_FAILED("임베딩 생성에 실패했습니다."),
+    EMBEDDING_CONTEXT_OVERFLOW("입력 텍스트가 모델 컨텍스트 길이를 초과했습니다.");
 
     private final String message;
 }
