@@ -210,4 +210,40 @@ public class JsonSchema {
         return this;
     }
 
+    /**
+     * Chat API format 파라미터용 객체로 변환
+     * Ollama Chat API는 format에 JSON Schema 객체를 직접 받습니다.
+     *
+     * @return format 파라미터에 전달할 Map 객체
+     */
+    public Map<String, Object> toFormatObject() {
+        Map<String, Object> formatMap = new LinkedHashMap<>();
+        formatMap.put("type", this.type);
+
+        if (this.title != null) {
+            formatMap.put("title", this.title);
+        }
+        if (this.description != null) {
+            formatMap.put("description", this.description);
+        }
+
+        if (this.properties != null && !this.properties.isEmpty()) {
+            Map<String, Object> propsMap = new LinkedHashMap<>();
+            for (Map.Entry<String, PropertySchema> entry : this.properties.entrySet()) {
+                propsMap.put(entry.getKey(), entry.getValue().toMap());
+            }
+            formatMap.put("properties", propsMap);
+        }
+
+        if (this.requiredFields != null && !this.requiredFields.isEmpty()) {
+            formatMap.put("required", this.requiredFields);
+        }
+
+        if (this.items != null) {
+            formatMap.put("items", this.items.toFormatObject());
+        }
+
+        return formatMap;
+    }
+
 }

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -151,5 +152,75 @@ public class PropertySchema {
                 .type(type)
                 .description(description)
                 .build();
+    }
+
+    /**
+     * Chat API format 파라미터용 Map으로 변환
+     *
+     * @return Map 객체
+     */
+    public Map<String, Object> toMap() {
+        Map<String, Object> map = new LinkedHashMap<>();
+
+        if (type != null) {
+            map.put("type", type);
+        }
+        if (description != null) {
+            map.put("description", description);
+        }
+        if (minimum != null) {
+            map.put("minimum", minimum);
+        }
+        if (maximum != null) {
+            map.put("maximum", maximum);
+        }
+        if (exclusiveMinimum != null) {
+            map.put("exclusiveMinimum", exclusiveMinimum);
+        }
+        if (exclusiveMaximum != null) {
+            map.put("exclusiveMaximum", exclusiveMaximum);
+        }
+        if (minLength != null) {
+            map.put("minLength", minLength);
+        }
+        if (maxLength != null) {
+            map.put("maxLength", maxLength);
+        }
+        if (example != null) {
+            map.put("example", example);
+        }
+        if (format != null) {
+            map.put("format", format);
+        }
+        if (pattern != null) {
+            map.put("pattern", pattern);
+        }
+        if (enumValues != null && !enumValues.isEmpty()) {
+            map.put("enum", enumValues);
+        }
+        if (items != null) {
+            map.put("items", items.toMap());
+        }
+        if (minItems != null) {
+            map.put("minItems", minItems);
+        }
+        if (maxItems != null) {
+            map.put("maxItems", maxItems);
+        }
+        if (uniqueItems != null) {
+            map.put("uniqueItems", uniqueItems);
+        }
+        if (properties != null && !properties.isEmpty()) {
+            Map<String, Object> propsMap = new LinkedHashMap<>();
+            for (Map.Entry<String, PropertySchema> entry : properties.entrySet()) {
+                propsMap.put(entry.getKey(), entry.getValue().toMap());
+            }
+            map.put("properties", propsMap);
+        }
+        if (nested != null) {
+            map.putAll(nested.toFormatObject());
+        }
+
+        return map;
     }
 }

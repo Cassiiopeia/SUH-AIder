@@ -35,6 +35,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 - ✅ **JSON 응답 강제**: JSON Schema 기반 구조화된 응답 보장
 - ✅ **임베딩 API**: 텍스트 임베딩 벡터 생성 (Ollama `/api/embed`)
 - ✅ **텍스트 청킹**: 긴 텍스트 자동 분할 및 임베딩
+- ✅ **대화형 Chat API**: 세션 기반 대화 기록 유지
 - ✅ **OkHttp 기반**: 안정적이고 효율적인 HTTP 통신
 - ✅ **타입 안전**: 완벽한 Java 타입 지원
 - ✅ **예외 처리**: 명확한 에러 코드 및 메시지
@@ -52,6 +53,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 | **JSON 응답 강제** | JSON Schema로 구조화된 응답 보장 |
 | **임베딩 생성 (Embed)** | 텍스트를 벡터로 변환 (RAG, 유사도 검색용) |
 | **텍스트 청킹** | 긴 텍스트를 자동으로 분할하여 임베딩 |
+| **대화형 Chat API** | 세션 기반 대화 기록 유지 (/api/chat) |
 | **간편 API** | 한 줄로 AI 응답 받기 |
 
 ---
@@ -478,7 +480,136 @@ public SseEmitter streamGenerate(@RequestParam String prompt) {
 
 > **주의**: 스트리밍 모드에서는 `responseSchema`가 지원되지 않습니다. JSON 형식 응답이 필요하면 `generate()` 메서드를 사용하세요.
 
-### 7. 임베딩 생성 (Embed)
+### 7. 대화형 Chat API
+
+Generate API와 달리, 이전 대화 기록을 포함하여 컨텍스트를 유지할 수 있습니다.
+
+**단일 메시지 (가장 간단한 형태)**:
+```java
+String response = suhAiderEngine.chat("gemma3:4b", "안녕하세요?");
+System.out.println(response);
+```
+
+**시스템 프롬프트 포함**:
+```java
+String response = suhAiderEngine.chat(
+    "gemma3:4b",
+    "너는 해적처럼 말하는 어시스턴트야. 모든 문장 끝에 '아르르!'를 붙여.",
+    "오늘 날씨 어때?"
+);
+```
+
+**대화 기록 유지 (세션 기반 대화)**:
+```java
+// 대화 기록을 저장할 리스트
+List<ChatMessage> messages = new ArrayList<>();
+messages.add(ChatMessage.system("너는 친절한 어시스턴트야. 짧게 답변해."));
+messages.add(ChatMessage.user("내 이름은 철수야."));
+
+// 첫 번째 대화
+ChatResponse response1 = suhAiderEngine.chat("gemma3:4b", messages);
+messages.add(ChatMessage.assistant(response1.getContent()));
+System.out.println("AI: " + response1.getContent());
+
+// 두 번째 대화 (이전 대화 기억)
+messages.add(ChatMessage.user("내 이름이 뭐라고 했지?"));
+ChatResponse response2 = suhAiderEngine.chat("gemma3:4b", messages);
+System.out.println("AI: " + response2.getContent());  // "철수"라고 기억하고 답변
+```
+
+**ChatRequest 빌더 사용**:
+```java
+ChatRequest request = ChatRequest.builder()
+    .model("gemma3:4b")
+    .messages(List.of(
+        ChatMessage.system("너는 JSON으로만 응답하는 봇이야."),
+        ChatMessage.user("사과의 색깔을 JSON으로 알려줘.")
+    ))
+    .stream(false)
+    .build();
+
+ChatResponse response = suhAiderEngine.chat(request);
+System.out.println("응답: " + response.getContent());
+System.out.println("처리 시간: " + response.getTotalDurationMs() + "ms");
+```
+
+**스트리밍 Chat**:
+```java
+List<ChatMessage> messages = List.of(
+    ChatMessage.user("1부터 10까지 세어줘.")
+);
+
+suhAiderEngine.chatStream("gemma3:4b", messages, new StreamCallback() {
+    @Override
+    public void onNext(String chunk) {
+        System.out.print(chunk);  // 실시간 출력
+    }
+
+    @Override
+    public void onComplete() {
+        System.out.println("\n완료!");
+    }
+
+    @Override
+    public void onError(Throwable error) {
+        System.err.println("에러: " + error.getMessage());
+    }
+});
+```
+
+**Spring MVC + SSE (비동기 스트리밍)**:
+```java
+@GetMapping(value = "/ai/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+public SseEmitter streamChat(@RequestParam String message, HttpSession session) {
+    SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+
+    // 세션에서 대화 기록 가져오기 (없으면 새로 생성)
+    @SuppressWarnings("unchecked")
+    List<ChatMessage> messages = (List<ChatMessage>) session.getAttribute("chatHistory");
+    if (messages == null) {
+        messages = new ArrayList<>();
+        messages.add(ChatMessage.system("너는 친절한 어시스턴트야."));
+        session.setAttribute("chatHistory", messages);
+    }
+
+    // 사용자 메시지 추가
+    messages.add(ChatMessage.user(message));
+
+    StringBuilder aiResponse = new StringBuilder();
+
+    suhAiderEngine.chatStreamAsync("gemma3:4b", new ArrayList<>(messages), new StreamCallback() {
+        @Override
+        public void onNext(String chunk) {
+            try {
+                aiResponse.append(chunk);
+                emitter.send(SseEmitter.event().data(chunk));
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+            }
+        }
+
+        @Override
+        public void onComplete() {
+            // AI 응답을 대화 기록에 추가
+            messages.add(ChatMessage.assistant(aiResponse.toString()));
+            emitter.complete();
+        }
+
+        @Override
+        public void onError(Throwable error) {
+            emitter.completeWithError(error);
+        }
+    });
+
+    return emitter;
+}
+```
+
+> **Generate vs Chat 차이점**:
+> - `generate()`: 단일 프롬프트, 컨텍스트 없음, `/api/generate` 사용
+> - `chat()`: 메시지 배열, 대화 기록 유지 가능, `/api/chat` 사용
+
+### 8. 임베딩 생성 (Embed)
 
 텍스트를 벡터로 변환하여 RAG, 유사도 검색 등에 활용할 수 있습니다.
 
@@ -514,7 +645,7 @@ EmbeddingResponse response = suhAiderEngine.embed(request);
 List<List<Double>> embeddings = response.getEmbeddings();
 ```
 
-### 8. 텍스트 청킹 + 임베딩
+### 9. 텍스트 청킹 + 임베딩
 
 긴 텍스트를 자동으로 분할하여 각각 임베딩합니다.
 
@@ -550,7 +681,7 @@ EmbeddingResponse response = suhAiderEngine.embedWithChunking("nomic-embed-text"
 EmbeddingResponse response = suhAiderEngine.embedWithChunking(longText);
 ```
 
-### 9. 예외 처리
+### 10. 예외 처리
 
 ```java
 try {
@@ -668,6 +799,61 @@ AI 텍스트를 스트리밍으로 생성합니다. 토큰이 생성될 때마�
 #### `CompletableFuture<Void> generateStreamAsync(String model, String prompt, StreamCallback callback)`
 비동기 스트리밍 (간편 버전).
 
+#### `ChatResponse chat(ChatRequest request)`
+대화형 AI 응답 생성. 이전 대화 기록을 포함하여 컨텍스트를 유지합니다.
+
+**파라미터**:
+- `request`: `ChatRequest` (model, messages 필수)
+
+**반환값**: `ChatResponse` (AI 응답 메시지 포함)
+**예외**: `SuhAiderException`
+
+#### `ChatResponse chat(String model, List<ChatMessage> messages)`
+간편 Chat. 모델명과 메시지 목록으로 바로 응답을 받습니다.
+
+**파라미터**:
+- `model`: 모델명 (예: `"gemma3:4b"`)
+- `messages`: 대화 메시지 목록
+
+**반환값**: `ChatResponse`
+
+#### `String chat(String model, String userMessage)`
+단일 메시지 Chat. 대화 기록 없이 단일 질문에 대한 응답을 받습니다.
+
+**파라미터**:
+- `model`: 모델명
+- `userMessage`: 사용자 메시지
+
+**반환값**: AI 응답 텍스트 (`String`)
+
+#### `String chat(String model, String systemPrompt, String userMessage)`
+시스템 프롬프트 포함 Chat.
+
+**파라미터**:
+- `model`: 모델명
+- `systemPrompt`: 시스템 지시문
+- `userMessage`: 사용자 메시지
+
+**반환값**: AI 응답 텍스트 (`String`)
+
+#### `void chatStream(ChatRequest request, StreamCallback callback)`
+대화형 AI 응답 생성 (스트리밍). 토큰이 생성될 때마다 콜백이 호출됩니다.
+
+**파라미터**:
+- `request`: `ChatRequest` (model, messages 필수)
+- `callback`: 스트리밍 콜백
+
+#### `void chatStream(String model, List<ChatMessage> messages, StreamCallback callback)`
+간편 Chat 스트리밍.
+
+#### `CompletableFuture<Void> chatStreamAsync(ChatRequest request, StreamCallback callback)`
+비동기 Chat 스트리밍. 백그라운드 스레드에서 실행됩니다.
+
+**반환값**: `CompletableFuture<Void>` (완료 시점 추적용)
+
+#### `CompletableFuture<Void> chatStreamAsync(String model, List<ChatMessage> messages, StreamCallback callback)`
+간편 비동기 Chat 스트리밍.
+
 #### `List<Double> embed(String model, String text)`
 단일 텍스트 임베딩 (간편 버전).
 
@@ -747,6 +933,51 @@ JsonSchema.builder()
 | `response` | `String` | 생성된 텍스트 |
 | `done` | `Boolean` | 생성 완료 여부 |
 | `totalDuration` | `Long` | 전체 처리 시간 (나노초) |
+
+#### `ChatMessage`
+```java
+// 팩토리 메서드 사용 (권장)
+ChatMessage.system("너는 친절한 어시스턴트야");  // 시스템 지시문
+ChatMessage.user("안녕하세요?");                 // 사용자 메시지
+ChatMessage.assistant("안녕하세요!");            // AI 응답 (대화 기록용)
+ChatMessage.tool("{\"result\": \"success\"}");   // 도구 결과
+
+// 이미지 포함 (멀티모달 모델용)
+ChatMessage.user("이 이미지에 뭐가 있어?", List.of("base64EncodedImage"));
+
+// 빌더 패턴
+ChatMessage.builder()
+    .role("user")
+    .content("메시지 내용")
+    .build();
+```
+
+#### `ChatRequest`
+```java
+ChatRequest.builder()
+    .model("gemma3:4b")           // 모델명 (필수)
+    .messages(List.of(...))       // 대화 메시지 목록 (필수)
+    .stream(false)                // 스트리밍 모드 (기본: false)
+    .format("json")               // JSON 응답 포맷
+    .keepAlive("5m")              // 모델 메모리 유지 시간
+    .tools(List.of(...))          // Function Calling용 도구 목록
+    .build();
+```
+
+#### `ChatResponse`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `model` | `String` | 사용된 모델명 |
+| `createdAt` | `String` | 생성 시간 (ISO 8601) |
+| `message` | `ChatMessage` | AI 응답 메시지 |
+| `done` | `Boolean` | 생성 완료 여부 |
+| `doneReason` | `String` | 종료 이유 (stop/length/tool_calls) |
+| `totalDuration` | `Long` | 전체 처리 시간 (나노초) |
+
+**편의 메서드**:
+- `getContent()`: AI 응답 텍스트 바로 추출
+- `getTotalDurationMs()`: 처리 시간(ms) 반환
+- `hasToolCalls()`: 도구 호출 여부 확인
 
 #### `EmbeddingRequest`
 ```java
