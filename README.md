@@ -33,6 +33,8 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 - ✅ **간편한 API**: 직관적인 메서드로 AI 서버 통신
 - ✅ **스트리밍 응답**: GPT처럼 실시간 토큰 단위 응답
 - ✅ **JSON 응답 강제**: JSON Schema 기반 구조화된 응답 보장
+- ✅ **임베딩 API**: 텍스트 임베딩 벡터 생성 (Ollama `/api/embed`)
+- ✅ **텍스트 청킹**: 긴 텍스트 자동 분할 및 임베딩
 - ✅ **OkHttp 기반**: 안정적이고 효율적인 HTTP 통신
 - ✅ **타입 안전**: 완벽한 Java 타입 지원
 - ✅ **예외 처리**: 명확한 에러 코드 및 메시지
@@ -48,6 +50,8 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 | **텍스트 생성 (Generate)** | AI 프롬프트로 텍스트 생성 |
 | **스트리밍 응답** | GPT처럼 실시간 토큰 단위 응답 표시 |
 | **JSON 응답 강제** | JSON Schema로 구조화된 응답 보장 |
+| **임베딩 생성 (Embed)** | 텍스트를 벡터로 변환 (RAG, 유사도 검색용) |
+| **텍스트 청킹** | 긴 텍스트를 자동으로 분할하여 임베딩 |
 | **간편 API** | 한 줄로 AI 응답 받기 |
 
 ---
@@ -216,6 +220,50 @@ suh:
       # 기본값: Asia/Seoul
       # 예시: UTC, America/New_York, Europe/London, Asia/Tokyo
       timezone: Asia/Seoul
+
+    #==========================================================================
+    # 임베딩 설정
+    # 텍스트를 벡터로 변환하는 임베딩 기능 설정
+    #==========================================================================
+    embedding:
+      # 기본 임베딩 모델
+      # 기본값: nomic-embed-text
+      default-model: nomic-embed-text
+
+      # 컨텍스트 초과 시 입력 자르기
+      # 기본값: true
+      # false로 설정하면 컨텍스트 초과 시 에러 반환
+      truncate: true
+
+      # 모델 메모리 유지 시간
+      # 기본값: 5m
+      # 예시: "5m", "1h", "-1" (영구)
+      keep-alive: 5m
+
+      # 임베딩 차원 수 (null = 모델 기본값)
+      # 일부 모델에서만 지원
+      # dimensions: 768
+
+      # 청킹 설정 (긴 텍스트 분할)
+      chunking:
+        # 청킹 활성화 여부
+        # 기본값: false
+        enabled: false
+
+        # 청킹 전략
+        # 기본값: FIXED_SIZE
+        # 옵션: FIXED_SIZE (고정 문자 수), SENTENCE (문장 단위), PARAGRAPH (단락 단위)
+        strategy: FIXED_SIZE
+
+        # 청크당 최대 문자 수
+        # 기본값: 500
+        # 토큰 ≈ 문자/4 근사치
+        chunk-size: 500
+
+        # 청크 간 오버랩 문자 수
+        # 기본값: 50
+        # 의미 손실 방지 (10~20% 권장)
+        overlap-size: 50
 ```
 
 ### Security Header 설정 예제
@@ -430,7 +478,79 @@ public SseEmitter streamGenerate(@RequestParam String prompt) {
 
 > **주의**: 스트리밍 모드에서는 `responseSchema`가 지원되지 않습니다. JSON 형식 응답이 필요하면 `generate()` 메서드를 사용하세요.
 
-### 7. 예외 처리
+### 7. 임베딩 생성 (Embed)
+
+텍스트를 벡터로 변환하여 RAG, 유사도 검색 등에 활용할 수 있습니다.
+
+**단일 텍스트 임베딩**:
+```java
+// 간편 사용
+List<Double> vector = suhAiderEngine.embed("nomic-embed-text", "Hello, World!");
+System.out.println("벡터 차원: " + vector.size());
+```
+
+**배치 임베딩** (여러 텍스트 한 번에):
+```java
+List<String> texts = List.of(
+    "첫 번째 문장입니다.",
+    "두 번째 문장입니다.",
+    "세 번째 문장입니다."
+);
+
+List<List<Double>> vectors = suhAiderEngine.embed("nomic-embed-text", texts);
+System.out.println("생성된 벡터 개수: " + vectors.size());
+```
+
+**상세 옵션**:
+```java
+EmbeddingRequest request = EmbeddingRequest.builder()
+    .model("nomic-embed-text")
+    .input("임베딩할 텍스트")
+    .truncate(true)      // 컨텍스트 초과 시 자르기
+    .keepAlive("10m")    // 모델 메모리 유지 시간
+    .build();
+
+EmbeddingResponse response = suhAiderEngine.embed(request);
+List<List<Double>> embeddings = response.getEmbeddings();
+```
+
+### 8. 텍스트 청킹 + 임베딩
+
+긴 텍스트를 자동으로 분할하여 각각 임베딩합니다.
+
+**직접 청킹 설정**:
+```java
+// 고정 크기 청킹 (500자, 50자 오버랩)
+ChunkingConfig config = ChunkingConfig.fixedSize(500, 50);
+
+EmbeddingResponse response = suhAiderEngine.embedWithChunking(
+    "nomic-embed-text",
+    longText,
+    config
+);
+
+System.out.println("청크 개수: " + response.getEmbeddings().size());
+```
+
+**문장/단락 단위 청킹**:
+```java
+// 문장 단위 청킹
+ChunkingConfig sentenceConfig = ChunkingConfig.sentence(1000);
+
+// 단락 단위 청킹
+ChunkingConfig paragraphConfig = ChunkingConfig.paragraph(2000);
+```
+
+**application.yml 설정 기반**:
+```java
+// application.yml의 suh.aider.embedding.chunking 설정 사용
+EmbeddingResponse response = suhAiderEngine.embedWithChunking("nomic-embed-text", longText);
+
+// 기본 모델과 청킹 설정 모두 사용
+EmbeddingResponse response = suhAiderEngine.embedWithChunking(longText);
+```
+
+### 9. 예외 처리
 
 ```java
 try {
@@ -548,6 +668,48 @@ AI 텍스트를 스트리밍으로 생성합니다. 토큰이 생성될 때마�
 #### `CompletableFuture<Void> generateStreamAsync(String model, String prompt, StreamCallback callback)`
 비동기 스트리밍 (간편 버전).
 
+#### `List<Double> embed(String model, String text)`
+단일 텍스트 임베딩 (간편 버전).
+
+**파라미터**:
+- `model`: 임베딩 모델명 (예: `"nomic-embed-text"`)
+- `text`: 임베딩할 텍스트
+
+**반환값**: 임베딩 벡터 `List<Double>`
+
+#### `List<List<Double>> embed(String model, List<String> texts)`
+배치 임베딩. 여러 텍스트를 한 번에 임베딩합니다.
+
+**파라미터**:
+- `model`: 임베딩 모델명
+- `texts`: 임베딩할 텍스트 목록
+
+**반환값**: 각 텍스트에 대응하는 임베딩 벡터 목록
+
+#### `EmbeddingResponse embed(EmbeddingRequest request)`
+임베딩 (상세 옵션). truncate, keepAlive, dimensions 등 세부 설정 가능.
+
+**파라미터**:
+- `request`: `EmbeddingRequest` (model, input 필수)
+
+**반환값**: `EmbeddingResponse` (임베딩 벡터 및 메타데이터)
+
+#### `EmbeddingResponse embedWithChunking(String model, String text, ChunkingConfig config)`
+청킹 + 임베딩. 긴 텍스트를 설정에 따라 분할하고 각각 임베딩합니다.
+
+**파라미터**:
+- `model`: 임베딩 모델명
+- `text`: 임베딩할 텍스트 (긴 텍스트 가능)
+- `config`: 청킹 설정
+
+**반환값**: `EmbeddingResponse` (각 청크의 임베딩 벡터 포함)
+
+#### `EmbeddingResponse embedWithChunking(String model, String text)`
+청킹 + 임베딩 (설정 기반). application.yml의 `suh.aider.embedding.chunking` 설정 사용.
+
+#### `EmbeddingResponse embedWithChunking(String text)`
+기본 모델로 청킹 + 임베딩. application.yml의 기본 모델과 청킹 설정 모두 사용.
+
 ### DTO 클래스
 
 #### `SuhAiderRequest`
@@ -586,6 +748,52 @@ JsonSchema.builder()
 | `done` | `Boolean` | 생성 완료 여부 |
 | `totalDuration` | `Long` | 전체 처리 시간 (나노초) |
 
+#### `EmbeddingRequest`
+```java
+EmbeddingRequest.builder()
+    .model("nomic-embed-text")  // 임베딩 모델명 (필수)
+    .input("텍스트")            // String 또는 List<String> (필수)
+    .truncate(true)             // 컨텍스트 초과 시 자르기 (기본: true)
+    .keepAlive("5m")            // 모델 메모리 유지 시간
+    .dimensions(768)            // 임베딩 차원 수 (모델 지원 시)
+    .build();
+```
+
+#### `EmbeddingResponse`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `model` | `String` | 사용된 모델명 |
+| `embeddings` | `List<List<Double>>` | 임베딩 벡터 목록 |
+| `totalDuration` | `Long` | 전체 처리 시간 (나노초) |
+| `loadDuration` | `Long` | 모델 로드 시간 (나노초) |
+| `promptEvalCount` | `Integer` | 프롬프트 토큰 수 |
+
+#### `ChunkingConfig`
+```java
+// 방법 1: 고정 크기 청킹
+ChunkingConfig.fixedSize(500, 50)  // chunkSize, overlapSize
+
+// 방법 2: 문장 단위 청킹
+ChunkingConfig.sentence(1000)       // maxChunkSize
+
+// 방법 3: 단락 단위 청킹
+ChunkingConfig.paragraph(2000)      // maxChunkSize
+
+// 방법 4: 빌더 패턴
+ChunkingConfig.builder()
+    .strategy(ChunkingConfig.Strategy.FIXED_SIZE)
+    .chunkSize(500)
+    .overlapSize(50)
+    .enabled(true)
+    .build();
+```
+
+| 전략 | 설명 |
+|------|------|
+| `FIXED_SIZE` | 고정 문자 수로 분할 (기본값) |
+| `SENTENCE` | 문장 종결자(. ! ?) 기준 분할 |
+| `PARAGRAPH` | 빈 줄(\n\n) 기준 분할 |
+
 #### `ModelInfo`
 | 필드 | 타입 | 설명 |
 |------|------|------|
@@ -612,6 +820,8 @@ JsonSchema.builder()
 | `UNAUTHORIZED` | API 키가 올바르지 않음 (401) |
 | `FORBIDDEN` | 접근 권한 없음 (403) |
 | `SERVER_ERROR` | AI 서버 오류 (500/502/503) |
+| `EMBEDDING_FAILED` | 임베딩 생성 실패 |
+| `EMBEDDING_CONTEXT_OVERFLOW` | 입력 텍스트가 모델 컨텍스트 길이 초과 |
 
 > **참고**: API 키는 이제 선택적입니다. 설정하지 않으면 인증 헤더를 추가하지 않습니다.
 
