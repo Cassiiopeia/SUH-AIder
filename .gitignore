@@ -45,6 +45,10 @@ src/test/resources/application.yml
 src/test/resources/application.properties
 src/test/resources/application*.yml
 src/test/resources/application*.properties
+
+# Dev 프로파일 설정 (민감 정보 포함)
+**/application-dev.yml
+**/application-dev.properties
 /src/test/java/kr/suhsaechan/ai/service/OllamaServiceTest.java
 
 # ====================================================================
