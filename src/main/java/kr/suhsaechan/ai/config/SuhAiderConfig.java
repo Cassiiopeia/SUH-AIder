@@ -83,6 +83,11 @@ public class SuhAiderConfig {
     private ModelRefresh modelRefresh = new ModelRefresh();
 
     /**
+     * 임베딩 기본 설정
+     */
+    private Embedding embedding = new Embedding();
+
+    /**
      * 모델 목록 자동 갱신 설정 클래스
      */
     @Data
@@ -120,5 +125,74 @@ public class SuhAiderConfig {
          * 예시: UTC, America/New_York, Europe/London
          */
         private String timezone = "Asia/Seoul";
+    }
+
+    /**
+     * 임베딩 설정 클래스
+     */
+    @Data
+    public static class Embedding {
+
+        /**
+         * 기본 임베딩 모델
+         * 기본값: nomic-embed-text
+         */
+        private String defaultModel = "nomic-embed-text";
+
+        /**
+         * 컨텍스트 초과 시 입력 자르기
+         * 기본값: true
+         */
+        private boolean truncate = true;
+
+        /**
+         * 모델 메모리 유지 시간
+         * 기본값: 5m
+         */
+        private String keepAlive = "5m";
+
+        /**
+         * 임베딩 차원 수 (null = 모델 기본값)
+         */
+        private Integer dimensions;
+
+        /**
+         * 청킹 설정
+         */
+        private Chunking chunking = new Chunking();
+
+        /**
+         * 청킹 설정 클래스
+         */
+        @Data
+        public static class Chunking {
+
+            /**
+             * 청킹 활성화 여부
+             * 기본값: false
+             */
+            private boolean enabled = false;
+
+            /**
+             * 청킹 전략
+             * 기본값: FIXED_SIZE
+             * 옵션: FIXED_SIZE, SENTENCE, PARAGRAPH
+             */
+            private String strategy = "FIXED_SIZE";
+
+            /**
+             * 청크당 최대 문자 수
+             * 기본값: 500
+             * // 토큰 ≈ 문자/4 근사치
+             */
+            private int chunkSize = 500;
+
+            /**
+             * 청크 간 오버랩 문자 수
+             * 기본값: 50
+             * // 의미 손실 방지 (10~20% 권장)
+             */
+            private int overlapSize = 50;
+        }
     }
 }
