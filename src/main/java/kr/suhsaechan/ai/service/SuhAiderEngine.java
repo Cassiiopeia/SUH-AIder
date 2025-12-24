@@ -13,6 +13,8 @@ import kr.suhsaechan.ai.model.ChatResponse;
 import kr.suhsaechan.ai.model.ChunkingConfig;
 import kr.suhsaechan.ai.model.EmbeddingRequest;
 import kr.suhsaechan.ai.model.EmbeddingResponse;
+import kr.suhsaechan.ai.model.FunctionRequest;
+import kr.suhsaechan.ai.model.FunctionResponse;
 import kr.suhsaechan.ai.model.JsonSchema;
 import kr.suhsaechan.ai.model.ModelInfo;
 import kr.suhsaechan.ai.model.ModelListResponse;
@@ -1270,5 +1272,94 @@ public class SuhAiderEngine {
             return "****";
         }
         return value.substring(0, 4) + "****";
+    }
+
+    // ========== Function Calling API ==========
+
+    /**
+     * Function Calling 수행
+     * FunctionGemma 등 Function Calling 지원 모델로 사용자 의도를 분류합니다.
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * // 1. 빌더 템플릿 정의 (한 번)
+     * FunctionRequest.Builder myRouter = FunctionRequest.builder()
+     *     .model("functiongemma")
+     *     .systemPrompt("You are a strict router. Choose exactly ONE tool call.")
+     *     .tool(FunctionTool.builder()
+     *         .name("route_rag")
+     *         .description("Use when user asks about config location")
+     *         .parameter(FunctionParameter.required("query", "string", "Search query"))
+     *         .build())
+     *     .tool(FunctionTool.builder()
+     *         .name("route_system")
+     *         .description("Use for status/logs")
+     *         .parameter(FunctionParameter.enumType("action", "Action", "get_status", "get_logs"))
+     *         .build());
+     *
+     * // 2. 사용 (userText만 추가)
+     * FunctionResponse response = engine.functionCall(
+     *     myRouter.userText("SSE 설정 어디에 했지?").build()
+     * );
+     *
+     * // 3. 결과 처리
+     * if (response.hasToolCall()) {
+     *     String toolName = response.getToolName();
+     *     String query = response.getArgumentAsString("query");
+     *     // 분기 처리...
+     * }
+     * </pre>
+     *
+     * @param request FunctionRequest (model, userText, systemPrompt, tools 필수)
+     * @return FunctionResponse (toolName, arguments)
+     * @throws SuhAiderException 네트워크 오류, 파라미터 오류 시
+     */
+    public FunctionResponse functionCall(FunctionRequest request) {
+        log.debug("FunctionCall 호출 - 모델: {}, Tool 개수: {}",
+                request.getModel(),
+                request.getTools() != null ? request.getTools().size() : 0);
+
+        // 1. 파라미터 검증
+        validateFunctionRequest(request);
+
+        // 2. FunctionRequest → ChatRequest 변환
+        ChatRequest chatRequest = request.toChatRequest();
+
+        // 3. Chat API 호출
+        ChatResponse chatResponse = chat(chatRequest);
+
+        // 4. ChatResponse → FunctionResponse 변환
+        FunctionResponse functionResponse = FunctionResponse.fromChatResponse(chatResponse);
+
+        log.info("FunctionCall 완료 - toolName: {}, hasToolCall: {}",
+                functionResponse.getToolName(),
+                functionResponse.isHasToolCall());
+
+        return functionResponse;
+    }
+
+    /**
+     * FunctionRequest 파라미터 검증
+     *
+     * @param request 검증할 요청
+     * @throws SuhAiderException 필수 파라미터 누락 시
+     */
+    private void validateFunctionRequest(FunctionRequest request) {
+        if (!StringUtils.hasText(request.getModel())) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER,
+                    "모델명이 비어있습니다");
+        }
+        if (!StringUtils.hasText(request.getUserText())) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER,
+                    "userText가 비어있습니다");
+        }
+        if (!StringUtils.hasText(request.getSystemPrompt())) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER,
+                    "systemPrompt가 비어있습니다");
+        }
+        if (request.getTools() == null || request.getTools().isEmpty()) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER,
+                    "tools가 비어있습니다. 최소 1개 이상의 FunctionTool을 정의해야 합니다");
+        }
     }
 }
