@@ -19,6 +19,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 - [빠른 시작](#빠른-시작)
 - [설정](#설정)
 - [사용 예제](#사용-예제)
+- [Function Calling 가이드](docs/FUNCTION_CALLING_GUIDE.md)
 - [JSON Schema 가이드](docs/JSON_SCHEMA_GUIDE.md)
 - [API 레퍼런스](#api-레퍼런스)
 - [테스트](#테스트)
@@ -41,6 +42,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 - ✅ **OkHttp 기반**: 안정적이고 효율적인 HTTP 통신
 - ✅ **타입 안전**: 완벽한 Java 타입 지원
 - ✅ **예외 처리**: 명확한 에러 코드 및 메시지
+- ✅ **Function Calling**: FunctionGemma 등 Tool 기반 의도 분류
 
 ---
 
@@ -56,6 +58,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 | **임베딩 생성 (Embed)** | 텍스트를 벡터로 변환 (RAG, 유사도 검색용) |
 | **텍스트 청킹** | 긴 텍스트를 자동으로 분할하여 임베딩 |
 | **대화형 Chat API** | 세션 기반 대화 기록 유지 (/api/chat) |
+| **Function Calling** | Tool 기반 의도 분류 (FunctionGemma 등) |
 | **간편 API** | 한 줄로 AI 응답 받기 |
 
 ---
@@ -611,7 +614,89 @@ public SseEmitter streamChat(@RequestParam String message, HttpSession session) 
 > - `generate()`: 단일 프롬프트, 컨텍스트 없음, `/api/generate` 사용
 > - `chat()`: 메시지 배열, 대화 기록 유지 가능, `/api/chat` 사용
 
-### 8. 임베딩 생성 (Embed)
+### 8. Function Calling (의도 분류)
+
+FunctionGemma 등 Function Calling 지원 모델로 사용자 의도를 분류합니다. RAG 검색 전 라우팅에 유용합니다.
+
+**기본 사용법**:
+```java
+// 1. Tool 정의
+FunctionTool ragTool = FunctionTool.builder()
+    .name("route_rag")
+    .description("Use when user asks about configuration or location")
+    .parameters(List.of(
+        FunctionTool.FunctionParameter.required("query", "string", "Search query")
+    ))
+    .build();
+
+FunctionTool systemTool = FunctionTool.of("route_system", "Use for status or logs");
+FunctionTool smalltalkTool = FunctionTool.of("route_smalltalk", "Use for greetings or chitchat");
+
+// 2. 요청 생성 및 호출
+FunctionRequest request = FunctionRequest.builder()
+    .model("functiongemma")
+    .systemPrompt("You are a router. Choose exactly ONE tool call.")
+    .tool(ragTool)
+    .tool(systemTool)
+    .tool(smalltalkTool)
+    .userText("SSE 설정 어디서 했지?")
+    .build();
+
+FunctionResponse response = suhAiderEngine.functionCall(request);
+
+// 3. 결과 처리
+if (response.isHasToolCall()) {
+    String toolName = response.getToolName();
+    String query = response.getArgumentAsString("query");
+
+    switch (toolName) {
+        case "route_rag":
+            // RAG 검색 수행
+            break;
+        case "route_system":
+            // 시스템 정보 조회
+            break;
+        case "route_smalltalk":
+            // 간단한 응답 생성
+            break;
+    }
+}
+```
+
+**템플릿 패턴 (재사용)**:
+```java
+// 빌더 템플릿 정의 (한 번)
+FunctionRequest.FunctionRequestBuilder myRouter = FunctionRequest.builder()
+    .model("functiongemma")
+    .systemPrompt("You are a strict router. Choose exactly ONE tool call.")
+    .tool(FunctionTool.of("route_rag", "Use for RAG search", "query", "string", "Search query"))
+    .tool(FunctionTool.of("route_system", "Use for system status"));
+
+// 여러 요청에 재사용 (userText만 변경)
+FunctionResponse response1 = suhAiderEngine.functionCall(
+    myRouter.userText("SSE 설정 어디?").build()
+);
+
+FunctionResponse response2 = suhAiderEngine.functionCall(
+    myRouter.userText("서버 상태 알려줘").build()
+);
+```
+
+**Enum 파라미터**:
+```java
+FunctionTool actionTool = FunctionTool.builder()
+    .name("route_system")
+    .description("Use for system operations")
+    .parameters(List.of(
+        FunctionTool.FunctionParameter.enumType("action", "Action type",
+            "get_status", "get_logs", "check_port")
+    ))
+    .build();
+```
+
+**📚 상세 가이드**: [Function Calling 가이드](docs/FUNCTION_CALLING_GUIDE.md)
+
+### 9. 임베딩 생성 (Embed)
 
 텍스트를 벡터로 변환하여 RAG, 유사도 검색 등에 활용할 수 있습니다.
 
@@ -647,7 +732,7 @@ EmbeddingResponse response = suhAiderEngine.embed(request);
 List<List<Double>> embeddings = response.getEmbeddings();
 ```
 
-### 9. 텍스트 청킹 + 임베딩
+### 10. 텍스트 청킹 + 임베딩
 
 긴 텍스트를 자동으로 분할하여 각각 임베딩합니다.
 
@@ -683,7 +768,7 @@ EmbeddingResponse response = suhAiderEngine.embedWithChunking("nomic-embed-text"
 EmbeddingResponse response = suhAiderEngine.embedWithChunking(longText);
 ```
 
-### 10. 예외 처리
+### 11. 예외 처리
 
 ```java
 try {
@@ -855,6 +940,15 @@ AI 텍스트를 스트리밍으로 생성합니다. 토큰이 생성될 때마�
 
 #### `CompletableFuture<Void> chatStreamAsync(String model, List<ChatMessage> messages, StreamCallback callback)`
 간편 비동기 Chat 스트리밍.
+
+#### `FunctionResponse functionCall(FunctionRequest request)`
+Function Calling 수행. FunctionGemma 등 Function Calling 지원 모델로 사용자 의도를 분류합니다.
+
+**파라미터**:
+- `request`: `FunctionRequest` (model, userText, systemPrompt, tools 필수)
+
+**반환값**: `FunctionResponse` (toolName, arguments)
+**예외**: `SuhAiderException` (파라미터 오류, 네트워크 오류)
 
 #### `List<Double> embed(String model, String text)`
 단일 텍스트 임베딩 (간편 버전).
@@ -1033,6 +1127,56 @@ ChunkingConfig.builder()
 | `name` | `String` | 모델 이름 |
 | `size` | `Long` | 모델 크기 (바이트) |
 | `modifiedAt` | `String` | 수정 일시 |
+
+#### `FunctionRequest`
+```java
+FunctionRequest.builder()
+    .model("functiongemma")        // 모델명 (필수)
+    .userText("SSE 설정 어디?")     // 사용자 입력 (필수)
+    .systemPrompt("...")           // 라우팅 규칙 (필수)
+    .tool(FunctionTool.of(...))    // Tool 추가 (1개 이상 필수)
+    .tool(FunctionTool.of(...))    // 체이닝 가능
+    .options(Map.of(...))          // 모델 옵션 (선택)
+    .keepAlive("5m")               // 메모리 유지 시간 (선택)
+    .build();
+```
+
+#### `FunctionResponse`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `toolName` | `String` | 선택된 Tool 이름 |
+| `arguments` | `Map<String, Object>` | Tool 인자 맵 |
+| `hasToolCall` | `boolean` | Tool 호출 존재 여부 |
+| `rawResponse` | `ChatResponse` | 원본 응답 (디버깅용) |
+
+**편의 메서드**:
+- `getArgumentAsString(key)`: 인자를 String으로 추출
+- `getArgumentAsInteger(key)`: 인자를 Integer로 추출
+- `getArgumentAsBoolean(key)`: 인자를 Boolean으로 추출
+- `getArgumentAsList(key)`: 인자를 List로 추출
+- `hasArgument(key)`: 특정 인자 존재 여부
+
+#### `FunctionTool`
+```java
+// 방법 1: 파라미터 없는 Tool
+FunctionTool.of("route_smalltalk", "Use for greetings")
+
+// 방법 2: 단일 파라미터 Tool
+FunctionTool.of("route_rag", "Use for RAG search",
+    "query", "string", "Search query")
+
+// 방법 3: 빌더 패턴
+FunctionTool.builder()
+    .name("route_system")
+    .description("Use for system operations")
+    .parameters(List.of(
+        FunctionTool.FunctionParameter.required("query", "string", "Query"),
+        FunctionTool.FunctionParameter.optional("limit", "integer", "Result limit"),
+        FunctionTool.FunctionParameter.enumType("action", "Action type",
+            "get_status", "get_logs", "check_port")
+    ))
+    .build();
+```
 
 #### `StreamCallback`
 스트리밍 응답을 처리하기 위한 콜백 인터페이스입니다.
