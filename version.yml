@@ -1,4 +1,4 @@
-# ===================================================================
+﻿# ===================================================================
 # 프로젝트 버전 관리 파일
 # ===================================================================
 #
@@ -18,7 +18,7 @@
 # 프로젝트 타입별 동기화 파일:
 # - spring: build.gradle (version = "x.y.z")
 # - flutter: pubspec.yaml (version: x.y.z+i, buildNumber 포함)
-# - react/node: package.json ("version": "x.y.z")
+# - react/next/node: package.json ("version": "x.y.z")
 # - react-native: iOS Info.plist 또는 Android build.gradle
 # - react-native-expo: app.json (expo.version)
 # - python: pyproject.toml (version = "x.y.z")
@@ -35,11 +35,11 @@
 # ===================================================================
 
 version: "0.2.1"
-version_code: 17 # app build number
-project_type: "spring" # spring, flutter, react, react-native, react-native-expo, node, python, basic
+version_code: 1  # app build number
+project_type: "spring"  # spring, flutter, next, react, react-native, react-native-expo, node, python, basic
 metadata:
-  last_updated: "2025-12-14 15:02:34"
-  last_updated_by: "Cassiiopeia"
+  last_updated: "2025-12-24 11:56:11"
+  last_updated_by: "template_integrator"
   default_branch: "main"
   integrated_from: "SUH-DEVOPS-TEMPLATE"
-  integration_date: "2025-12-14"
+  integration_date: "2025-12-24"
