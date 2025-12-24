@@ -1,4 +1,4 @@
-﻿# ===================================================================
+# ===================================================================
 # 프로젝트 버전 관리 파일
 # ===================================================================
 #
@@ -33,13 +33,12 @@
 # - project_type은 최초 설정 후 변경하지 마세요
 # - 버전은 항상 높은 버전으로 자동 동기화됩니다
 # ===================================================================
-
-version: "0.2.1"
-version_code: 1  # app build number
-project_type: "spring"  # spring, flutter, next, react, react-native, react-native-expo, node, python, basic
+version: "0.2.2"
+version_code: 2 # app build number
+project_type: "spring" # spring, flutter, next, react, react-native, react-native-expo, node, python, basic
 metadata:
-  last_updated: "2025-12-24 11:56:11"
-  last_updated_by: "template_integrator"
+  last_updated: "2025-12-24 03:02:16"
+  last_updated_by: "Cassiiopeia"
   default_branch: "main"
   integrated_from: "SUH-DEVOPS-TEMPLATE"
   integration_date: "2025-12-24"
