@@ -18,12 +18,16 @@ import kr.suhsaechan.ai.model.FunctionResponse;
 import kr.suhsaechan.ai.model.JsonSchema;
 import kr.suhsaechan.ai.model.ModelInfo;
 import kr.suhsaechan.ai.model.ModelListResponse;
+import kr.suhsaechan.ai.model.PullProgress;
+import kr.suhsaechan.ai.model.PullResult;
 import kr.suhsaechan.ai.model.SuhAiderRequest;
 import kr.suhsaechan.ai.model.SuhAiderResponse;
+import kr.suhsaechan.ai.util.FormatUtils;
 import kr.suhsaechan.ai.util.JsonResponseCleaner;
 import kr.suhsaechan.ai.util.PromptEnhancer;
 import kr.suhsaechan.ai.util.TextChunker;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -45,6 +49,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * SUH-AIDER AI 서버와 통신하는 엔진
@@ -142,7 +151,7 @@ public class SuhAiderEngine {
                                 model.getName(),
                                 model.getDetails() != null ?
                                         model.getDetails().getParameterSize() : "N/A",
-                                formatSize(model.getSize())
+                                FormatUtils.formatBytes(model.getSize())
                         )
                 );
             } else {
@@ -328,24 +337,458 @@ public class SuhAiderEngine {
     }
 
     /**
-     * 파일 크기 포맷팅 (사람이 읽기 쉽게)
+     * 캐시에 모델 추가 (다운로드 완료 후 호출)
      *
-     * @param bytes 바이트 크기
-     * @return 포맷된 문자열 (예: "7.03 GB")
+     * @param modelName 추가할 모델명
      */
-    private String formatSize(Long bytes) {
-        if (bytes == null) return "N/A";
+    private void addModelToCache(String modelName) {
+        if (!modelsInitialized) {
+            return;
+        }
 
-        if (bytes < 1024) return bytes + " B";
+        boolean exists = availableModels.stream()
+                .anyMatch(m -> m.getName().equals(modelName));
+        if (!exists) {
+            availableModels.add(ModelInfo.builder().name(modelName).build());
+            log.debug("캐시에 모델 추가됨: {}", modelName);
+        }
+    }
 
-        double kb = bytes / 1024.0;
-        if (kb < 1024) return String.format("%.2f KB", kb);
+    // ========== Model Pull API (Ollama /api/pull) ==========
 
-        double mb = kb / 1024.0;
-        if (mb < 1024) return String.format("%.2f MB", mb);
+    /**
+     * 모델 다운로드 (동기 방식)
+     * POST /api/pull
+     *
+     * <p>다운로드가 완료될 때까지 블로킹됩니다.
+     * 대용량 모델의 경우 수십 분이 걸릴 수 있으므로,
+     * 진행률이 필요하면 {@link #pullModelStream(String, PullCallback)}을 사용하세요.</p>
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * boolean success = suhAiderEngine.pullModel("llama3.2");
+     * if (success) {
+     *     System.out.println("다운로드 완료!");
+     * }
+     * </pre>
+     *
+     * @param modelName 다운로드할 모델명 (예: "llama3.2", "llama3.2:70b")
+     * @return 다운로드 성공 여부
+     * @throws SuhAiderException 네트워크 오류, 모델 미존재 등
+     */
+    public boolean pullModel(String modelName) {
+        return pullModel(modelName, false);
+    }
 
-        double gb = mb / 1024.0;
-        return String.format("%.2f GB", gb);
+    /**
+     * 모델 다운로드 (동기 방식, insecure 옵션)
+     *
+     * @param modelName 다운로드할 모델명
+     * @param insecure  TLS 검증 건너뛰기 (보안 위험, 비권장)
+     * @return 다운로드 성공 여부
+     * @throws SuhAiderException 네트워크 오류 등
+     */
+    public boolean pullModel(String modelName, boolean insecure) {
+        log.info("모델 다운로드 시작 (동기) - 모델: {}, insecure: {}", modelName, insecure);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<PullResult> resultRef = new AtomicReference<>();
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+
+        pullModelStream(modelName, insecure, new PullCallback() {
+            @Override
+            public void onProgress(PullProgress progress) {
+                // 동기 방식에서는 진행률 무시
+                log.debug("다운로드 진행: {} - {}", modelName, progress.getFormattedProgress());
+            }
+
+            @Override
+            public void onComplete(PullResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                errorRef.set(error);
+                latch.countDown();
+            }
+        });
+
+        try {
+            // 무제한 대기 (대용량 모델 고려)
+            latch.await();
+
+            if (errorRef.get() != null) {
+                Throwable error = errorRef.get();
+                if (error instanceof SuhAiderException) {
+                    throw (SuhAiderException) error;
+                }
+                throw new SuhAiderException(SuhAiderErrorCode.MODEL_PULL_FAILED, error);
+            }
+
+            PullResult result = resultRef.get();
+            if (result == null) {
+                throw new SuhAiderException(SuhAiderErrorCode.MODEL_PULL_FAILED, "결과가 없습니다");
+            }
+
+            if (result.isCancelled()) {
+                throw new SuhAiderException(SuhAiderErrorCode.MODEL_PULL_CANCELLED);
+            }
+
+            log.info("모델 다운로드 완료 - 모델: {}, 성공: {}, 소요시간: {}",
+                    modelName, result.isSuccess(), result.getFormattedDuration());
+            return result.isSuccess();
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SuhAiderException(SuhAiderErrorCode.MODEL_PULL_FAILED, "다운로드가 인터럽트되었습니다", e);
+        }
+    }
+
+    /**
+     * 모델 다운로드 (스트리밍 + 취소 가능)
+     * POST /api/pull (stream: true)
+     *
+     * <p>진행률을 실시간으로 받을 수 있으며, 언제든 취소할 수 있습니다.</p>
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * PullHandle handle = suhAiderEngine.pullModelStream("llama3.2:70b", new PullCallback() {
+     *     &#64;Override
+     *     public void onProgress(PullProgress progress) {
+     *         System.out.printf("다운로드 중: %s (%.1f%%)\n",
+     *             progress.getStatus(), progress.getPercent());
+     *     }
+     *
+     *     &#64;Override
+     *     public void onComplete(PullResult result) {
+     *         if (result.isSuccess()) {
+     *             System.out.println("다운로드 완료! 소요시간: " + result.getFormattedDuration());
+     *         }
+     *     }
+     *
+     *     &#64;Override
+     *     public void onError(Throwable error) {
+     *         System.err.println("에러: " + error.getMessage());
+     *     }
+     * });
+     *
+     * // 나중에 취소
+     * handle.cancel();
+     * </pre>
+     *
+     * @param modelName 다운로드할 모델명
+     * @param callback  진행률 콜백
+     * @return PullHandle (취소 및 상태 확인용)
+     */
+    public PullHandle pullModelStream(String modelName, PullCallback callback) {
+        return pullModelStream(modelName, false, callback);
+    }
+
+    /**
+     * 모델 다운로드 (스트리밍 + 취소 가능, insecure 옵션)
+     *
+     * @param modelName 다운로드할 모델명
+     * @param insecure  TLS 검증 건너뛰기
+     * @param callback  진행률 콜백
+     * @return PullHandle (취소 및 상태 확인용)
+     */
+    public PullHandle pullModelStream(String modelName, boolean insecure, PullCallback callback) {
+        log.info("모델 다운로드 시작 (스트림) - 모델: {}, insecure: {}", modelName, insecure);
+
+        // 파라미터 검증
+        if (!StringUtils.hasText(modelName)) {
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다"));
+            return createDummyHandle(modelName);
+        }
+
+        String url = config.getBaseUrl() + "/api/pull";
+        long startTime = System.currentTimeMillis();
+
+        try {
+            // 요청 Body 생성
+            String requestBody = objectMapper.writeValueAsString(
+                    java.util.Map.of(
+                            "name", modelName,
+                            "insecure", insecure,
+                            "stream", true
+                    )
+            );
+
+            Request request = addSecurityHeader(new Request.Builder())
+                    .url(url)
+                    .post(RequestBody.create(requestBody, MediaType.parse("application/json")))
+                    .build();
+
+            // Pull 전용 클라이언트 (타임아웃 무제한)
+            OkHttpClient pullClient = httpClient.newBuilder()
+                    .readTimeout(0, TimeUnit.SECONDS)
+                    .build();
+
+            Call call = pullClient.newCall(request);
+            DefaultPullHandle handle = new DefaultPullHandle(modelName, call);
+
+            // 별도 스레드에서 스트리밍 처리
+            CompletableFuture.runAsync(() -> {
+                try (Response response = call.execute()) {
+                    if (!response.isSuccessful()) {
+                        String responseBody = response.body() != null ? response.body().string() : "";
+                        log.error("모델 다운로드 실패 - HTTP {}: {}", response.code(), responseBody);
+                        handle.markDone();
+                        callback.onError(new SuhAiderException(SuhAiderErrorCode.MODEL_PULL_FAILED,
+                                "HTTP " + response.code() + ": " + responseBody));
+                        return;
+                    }
+
+                    ResponseBody body = response.body();
+                    if (body == null) {
+                        handle.markDone();
+                        callback.onError(new SuhAiderException(SuhAiderErrorCode.EMPTY_RESPONSE));
+                        return;
+                    }
+
+                    // 스트림 처리
+                    BufferedSource source = body.source();
+                    boolean success = false;
+
+                    while (!source.exhausted()) {
+                        String line = source.readUtf8Line();
+
+                        if (line == null || line.trim().isEmpty()) {
+                            continue;
+                        }
+
+                        try {
+                            JsonNode node = objectMapper.readTree(line);
+
+                            // 에러 응답 확인
+                            if (node.has("error")) {
+                                String errorMsg = node.get("error").asText("");
+                                log.error("모델 다운로드 에러: {}", errorMsg);
+                                handle.markDone();
+                                callback.onComplete(PullResult.failure(modelName, errorMsg));
+                                return;
+                            }
+
+                            // 진행률 파싱
+                            PullProgress progress = PullProgress.builder()
+                                    .status(node.path("status").asText(""))
+                                    .digest(node.path("digest").asText(null))
+                                    .completed(node.path("completed").asLong(0))
+                                    .total(node.path("total").asLong(0))
+                                    .build();
+
+                            handle.updateProgress(progress);
+                            try {
+                                callback.onProgress(progress);
+                            } catch (Exception callbackException) {
+                                log.warn("콜백 처리 중 예외 발생 (무시됨): {}", callbackException.getMessage());
+                            }
+
+                            // 성공 확인
+                            if (progress.isSuccess()) {
+                                success = true;
+                                break;
+                            }
+
+                        } catch (JsonProcessingException e) {
+                            log.warn("청크 파싱 실패 (건너뜀): {}", line);
+                        }
+                    }
+
+                    long duration = System.currentTimeMillis() - startTime;
+                    handle.markDone();
+
+                    if (success) {
+                        // 캐시에 모델 추가
+                        addModelToCache(modelName);
+                        log.info("모델 다운로드 완료: {} (소요시간: {}ms)", modelName, duration);
+                        callback.onComplete(PullResult.success(modelName, duration));
+                    } else if (handle.isCancelled()) {
+                        log.info("모델 다운로드 취소됨: {}", modelName);
+                        callback.onComplete(PullResult.cancelled(modelName));
+                    } else {
+                        callback.onComplete(PullResult.failure(modelName, "다운로드가 완료되지 않았습니다"));
+                    }
+
+                } catch (IOException e) {
+                    handle.markDone();
+                    if (handle.isCancelled()) {
+                        log.info("모델 다운로드 취소됨: {}", modelName);
+                        callback.onComplete(PullResult.cancelled(modelName));
+                    } else {
+                        log.error("모델 다운로드 네트워크 오류: {}", e.getMessage());
+                        callback.onError(new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e));
+                    }
+                }
+            });
+
+            return handle;
+
+        } catch (JsonProcessingException e) {
+            log.error("JSON 생성 실패: {}", e.getMessage());
+            callback.onError(new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e));
+            return createDummyHandle(modelName);
+        }
+    }
+
+    /**
+     * 모델 다운로드 (비동기)
+     * 백그라운드에서 다운로드하고 CompletableFuture로 결과 반환
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * CompletableFuture&lt;PullResult&gt; future = suhAiderEngine.pullModelAsync("llama3.2");
+     *
+     * // 다른 작업 수행...
+     *
+     * // 결과 대기
+     * PullResult result = future.get();
+     * if (result.isSuccess()) {
+     *     System.out.println("다운로드 완료!");
+     * }
+     * </pre>
+     *
+     * @param modelName 다운로드할 모델명
+     * @return CompletableFuture&lt;PullResult&gt;
+     */
+    public CompletableFuture<PullResult> pullModelAsync(String modelName) {
+        return pullModelAsync(modelName, null);
+    }
+
+    /**
+     * 모델 다운로드 (비동기 + 진행률 리스너)
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * CompletableFuture&lt;PullResult&gt; future = suhAiderEngine.pullModelAsync(
+     *     "llama3.2",
+     *     progress -&gt; System.out.printf("진행률: %.1f%%\n", progress.getPercent())
+     * );
+     *
+     * PullResult result = future.get();
+     * </pre>
+     *
+     * @param modelName        다운로드할 모델명
+     * @param progressListener 진행률 리스너 (null 가능)
+     * @return CompletableFuture&lt;PullResult&gt;
+     */
+    public CompletableFuture<PullResult> pullModelAsync(String modelName, Consumer<PullProgress> progressListener) {
+        CompletableFuture<PullResult> future = new CompletableFuture<>();
+
+        pullModelStream(modelName, new PullCallback() {
+            @Override
+            public void onProgress(PullProgress progress) {
+                if (progressListener != null) {
+                    progressListener.accept(progress);
+                }
+            }
+
+            @Override
+            public void onComplete(PullResult result) {
+                future.complete(result);
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                future.completeExceptionally(error);
+            }
+        });
+
+        return future;
+    }
+
+    /**
+     * 여러 모델을 병렬로 다운로드
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * List&lt;PullHandle&gt; handles = suhAiderEngine.pullModelsParallel(
+     *     List.of("llama3.2", "mistral", "codellama"),
+     *     new PullCallback() {
+     *         &#64;Override
+     *         public void onProgress(PullProgress progress) {
+     *             System.out.printf("진행: %s\n", progress.getFormattedProgress());
+     *         }
+     *         // ... onComplete, onError
+     *     }
+     * );
+     *
+     * // 모두 취소
+     * handles.forEach(PullHandle::cancel);
+     * </pre>
+     *
+     * @param modelNames 다운로드할 모델명 목록
+     * @param callback   각 모델의 진행률/완료 콜백
+     * @return 각 모델에 대한 PullHandle 목록
+     */
+    public List<PullHandle> pullModelsParallel(List<String> modelNames, PullCallback callback) {
+        log.info("병렬 모델 다운로드 시작 - 모델 {}개: {}", modelNames.size(), modelNames);
+
+        return modelNames.stream()
+                .map(name -> pullModelStream(name, callback))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 여러 모델 병렬 다운로드 (비동기)
+     * 모든 다운로드가 완료되면 결과 목록 반환
+     *
+     * <p>사용 예제:</p>
+     * <pre>
+     * CompletableFuture&lt;List&lt;PullResult&gt;&gt; future =
+     *     suhAiderEngine.pullModelsAsync(List.of("llama3.2", "mistral"));
+     *
+     * List&lt;PullResult&gt; results = future.get();
+     * results.forEach(r -&gt; System.out.println(r.getModelName() + ": " + r.isSuccess()));
+     * </pre>
+     *
+     * @param modelNames 다운로드할 모델명 목록
+     * @return CompletableFuture&lt;List&lt;PullResult&gt;&gt;
+     */
+    public CompletableFuture<List<PullResult>> pullModelsAsync(List<String> modelNames) {
+        log.info("비동기 병렬 모델 다운로드 시작 - 모델 {}개: {}", modelNames.size(), modelNames);
+
+        List<CompletableFuture<PullResult>> futures = modelNames.stream()
+                .map(this::pullModelAsync)
+                .collect(Collectors.toList());
+
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> futures.stream()
+                        .map(CompletableFuture::join)
+                        .collect(Collectors.toList()));
+    }
+
+    /**
+     * 에러 발생 시 반환할 더미 PullHandle 생성
+     */
+    private PullHandle createDummyHandle(String modelName) {
+        return new PullHandle() {
+            @Override
+            public void cancel() {
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return false;
+            }
+
+            @Override
+            public boolean isDone() {
+                return true;
+            }
+
+            @Override
+            public PullProgress getLatestProgress() {
+                return null;
+            }
+
+            @Override
+            public String getModelName() {
+                return modelName;
+            }
+        };
     }
 
     /**

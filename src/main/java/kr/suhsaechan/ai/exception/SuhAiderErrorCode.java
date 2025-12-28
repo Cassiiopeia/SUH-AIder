@@ -38,7 +38,9 @@ public enum SuhAiderErrorCode {
     EMBEDDING_CONTEXT_OVERFLOW("입력 텍스트가 모델 컨텍스트 길이를 초과했습니다."),
 
     // 모델 관리 에러
-    MODEL_DELETE_FAILED("모델 삭제에 실패했습니다.");
+    MODEL_DELETE_FAILED("모델 삭제에 실패했습니다."),
+    MODEL_PULL_FAILED("모델 다운로드에 실패했습니다."),
+    MODEL_PULL_CANCELLED("모델 다운로드가 취소되었습니다.");
 
     private final String message;
 }
