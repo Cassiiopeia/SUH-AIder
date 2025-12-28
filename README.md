@@ -60,6 +60,8 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 | **텍스트 청킹** | 긴 텍스트를 자동으로 분할하여 임베딩 |
 | **대화형 Chat API** | 세션 기반 대화 기록 유지 (/api/chat) |
 | **Function Calling** | Tool 기반 의도 분류 (FunctionGemma 등) |
+| **모델 다운로드 (Pull)** | Ollama 모델 다운로드 (진행률, 취소, 병렬 지원) |
+| **모델 삭제 (Delete)** | Ollama 모델 삭제 |
 | **간편 API** | 한 줄로 AI 응답 받기 |
 
 ---
@@ -769,7 +771,72 @@ EmbeddingResponse response = suhAiderEngine.embedWithChunking("nomic-embed-text"
 EmbeddingResponse response = suhAiderEngine.embedWithChunking(longText);
 ```
 
-### 11. 예외 처리
+### 11. 모델 다운로드 (Pull)
+
+Ollama 서버에서 모델을 다운로드합니다. 진행률 확인, 취소, 병렬 다운로드를 지원합니다.
+
+**간단한 동기 다운로드**:
+```java
+// 다운로드 완료까지 블로킹
+boolean success = suhAiderEngine.pullModel("llama3.2");
+```
+
+**진행률 콜백 + 취소 지원**:
+```java
+PullHandle handle = suhAiderEngine.pullModelStream("llama3.2:70b", new PullCallback() {
+    @Override
+    public void onProgress(PullProgress progress) {
+        System.out.printf("다운로드 중: %s (%.1f%%)%n",
+            progress.getStatus(), progress.getPercent());
+    }
+
+    @Override
+    public void onComplete(PullResult result) {
+        if (result.isSuccess()) {
+            System.out.println("완료! 소요시간: " + result.getFormattedDuration());
+        } else if (result.isCancelled()) {
+            System.out.println("취소됨");
+        } else {
+            System.out.println("실패: " + result.getErrorMessage());
+        }
+    }
+
+    @Override
+    public void onError(Throwable error) {
+        System.err.println("에러: " + error.getMessage());
+    }
+});
+
+// 취소하려면
+handle.cancel();
+```
+
+**비동기 다운로드**:
+```java
+CompletableFuture<PullResult> future = suhAiderEngine.pullModelAsync("llama3.2");
+// 다른 작업 수행...
+PullResult result = future.get();
+```
+
+**병렬 다운로드**:
+```java
+CompletableFuture<List<PullResult>> future = suhAiderEngine.pullModelsAsync(
+    List.of("llama3.2", "mistral", "gemma3:4b")
+);
+List<PullResult> results = future.get();
+```
+
+### 12. 모델 삭제 (Delete)
+
+```java
+// 모델 삭제
+boolean success = suhAiderEngine.deleteModel("llama3.2");
+if (success) {
+    System.out.println("모델 삭제 완료");
+}
+```
+
+### 13. 예외 처리
 
 ```java
 try {
@@ -993,6 +1060,42 @@ Function Calling 수행. FunctionGemma 등 Function Calling 지원 모델로 사
 #### `EmbeddingResponse embedWithChunking(String text)`
 기본 모델로 청킹 + 임베딩. application.yml의 기본 모델과 청킹 설정 모두 사용.
 
+#### `boolean pullModel(String modelName)`
+모델을 다운로드합니다 (동기 방식, 완료까지 블로킹).
+
+**파라미터**:
+- `modelName`: 다운로드할 모델명 (예: `"llama3.2"`)
+
+**반환값**: 성공하면 `true`
+
+#### `PullHandle pullModelStream(String modelName, PullCallback callback)`
+모델을 다운로드합니다 (스트리밍 방식, 진행률 콜백).
+
+**파라미터**:
+- `modelName`: 다운로드할 모델명
+- `callback`: 진행률/완료/에러 콜백
+
+**반환값**: `PullHandle` (취소 및 상태 확인용)
+
+#### `CompletableFuture<PullResult> pullModelAsync(String modelName)`
+모델을 비동기로 다운로드합니다.
+
+**반환값**: `CompletableFuture<PullResult>`
+
+#### `CompletableFuture<List<PullResult>> pullModelsAsync(List<String> modelNames)`
+여러 모델을 병렬로 다운로드합니다.
+
+**반환값**: `CompletableFuture<List<PullResult>>`
+
+#### `boolean deleteModel(String modelName)`
+모델을 삭제합니다.
+
+**파라미터**:
+- `modelName`: 삭제할 모델명 (예: `"llama3.2"`)
+
+**반환값**: 성공하면 `true`
+**예외**: `SuhAiderException` (MODEL_DELETE_FAILED)
+
 ### DTO 클래스
 
 #### `SuhAiderRequest`
@@ -1188,6 +1291,51 @@ FunctionTool.builder()
 | `onComplete()` | 응답 생성이 완료되면 호출됩니다 |
 | `onError(Throwable error)` | 에러 발생 시 호출됩니다 |
 
+#### `PullCallback`
+모델 다운로드 진행률을 처리하기 위한 콜백 인터페이스입니다.
+
+| 메서드 | 설명 |
+|--------|------|
+| `onProgress(PullProgress progress)` | 진행 상태 업데이트 시 호출됩니다 |
+| `onComplete(PullResult result)` | 다운로드 완료 시 호출됩니다 (성공/실패/취소) |
+| `onError(Throwable error)` | 에러 발생 시 호출됩니다 |
+
+#### `PullHandle`
+진행 중인 다운로드의 상태 확인 및 취소에 사용합니다.
+
+| 메서드 | 설명 |
+|--------|------|
+| `cancel()` | 다운로드를 취소합니다 |
+| `isCancelled()` | 취소되었는지 확인합니다 |
+| `isDone()` | 완료되었는지 확인합니다 |
+| `getLatestProgress()` | 최신 진행 상태를 가져옵니다 |
+| `getModelName()` | 다운로드 중인 모델명을 가져옵니다 |
+
+#### `PullProgress`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `status` | `String` | 현재 상태 (pulling manifest, downloading, verifying 등) |
+| `digest` | `String` | 다운로드 중인 레이어 다이제스트 |
+| `completed` | `long` | 완료된 바이트 수 |
+| `total` | `long` | 전체 바이트 수 |
+
+**편의 메서드**:
+- `getPercent()`: 진행률 (0.0 ~ 100.0)
+- `getFormattedProgress()`: 포맷된 진행 상태 (예: "1.2 GB / 4.0 GB (30.0%)")
+- `isSuccess()`: 성공 상태인지 확인
+
+#### `PullResult`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `modelName` | `String` | 다운로드한 모델명 |
+| `success` | `boolean` | 성공 여부 |
+| `cancelled` | `boolean` | 취소 여부 |
+| `totalDurationMs` | `long` | 소요 시간 (밀리초) |
+| `errorMessage` | `String` | 실패 시 에러 메시지 |
+
+**편의 메서드**:
+- `getFormattedDuration()`: 포맷된 소요 시간 (예: "2분 30초")
+
 ### 예외 (SuhAiderException)
 
 | 에러 코드 | 설명 |
@@ -1200,6 +1348,9 @@ FunctionTool.builder()
 | `SERVER_ERROR` | AI 서버 오류 (500/502/503) |
 | `EMBEDDING_FAILED` | 임베딩 생성 실패 |
 | `EMBEDDING_CONTEXT_OVERFLOW` | 입력 텍스트가 모델 컨텍스트 길이 초과 |
+| `MODEL_DELETE_FAILED` | 모델 삭제 실패 |
+| `MODEL_PULL_FAILED` | 모델 다운로드 실패 |
+| `MODEL_PULL_CANCELLED` | 모델 다운로드 취소됨 |
 
 > **참고**: API 키는 이제 선택적입니다. 설정하지 않으면 인증 헤더를 추가하지 않습니다.
 
