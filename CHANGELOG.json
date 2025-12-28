@@ -1,11 +1,39 @@
 {
   "metadata": {
-    "lastUpdated": "2025-12-24T07:16:01Z",
-    "currentVersion": "0.2.3",
+    "lastUpdated": "2025-12-28T15:39:24Z",
+    "currentVersion": "1.0.1",
     "projectType": "spring",
-    "totalReleases": 13
+    "totalReleases": 14
   },
   "releases": [
+    {
+      "version": "1.0.1",
+      "project_type": "spring",
+      "date": "2025-12-28",
+      "pr_number": 27,
+      "raw_summary": "## Summary by CodeRabbit\n\n## 릴리스 노트\n\n* **New Features**\n  * Ollama 서버에서 모델을 삭제하는 기능 추가\n\n* **Documentation**\n  * Spring Boot 테스트 코드 생성 도구 설명서 추가\n\n* **Chores**\n  * 버전을 1.0.1로 업데이트",
+      "parsed_changes": {
+        "new_features": {
+          "title": "New Features",
+          "items": [
+            "Ollama 서버에서 모델을 삭제하는 기능 추가"
+          ]
+        },
+        "documentation": {
+          "title": "Documentation",
+          "items": [
+            "Spring Boot 테스트 코드 생성 도구 설명서 추가"
+          ]
+        },
+        "chores": {
+          "title": "Chores",
+          "items": [
+            "버전을 1.0.1로 업데이트"
+          ]
+        }
+      },
+      "parse_method": "markdown"
+    },
     {
       "version": "0.2.3",
       "project_type": "spring",
