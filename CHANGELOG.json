@@ -1,11 +1,35 @@
 {
   "metadata": {
-    "lastUpdated": "2025-12-28T15:39:24Z",
-    "currentVersion": "1.0.1",
+    "lastUpdated": "2025-12-28T16:50:01Z",
+    "currentVersion": "1.1.1",
     "projectType": "spring",
-    "totalReleases": 14
+    "totalReleases": 15
   },
   "releases": [
+    {
+      "version": "1.1.1",
+      "project_type": "spring",
+      "date": "2025-12-28",
+      "pr_number": 29,
+      "raw_summary": "## Summary by CodeRabbit\n\n## 릴리스 노트\n\n* **새로운 기능**\n  * 모델 다운로드 기능 추가: 동기 다운로드, 스트리밍 다운로드(진행률 콜백 지원), 비동기 단일 및 일괄 다운로드\n  * 모델 삭제 기능 추가\n  * 다운로드 진행률 추적 및 취소 기능 제공\n  \n* **버전**\n  * 버전을 1.0.1에서 1.1.1로 업데이트",
+      "parsed_changes": {
+        "새로운_기능": {
+          "title": "새로운 기능",
+          "items": [
+            "모델 다운로드 기능 추가: 동기 다운로드, 스트리밍 다운로드(진행률 콜백 지원), 비동기 단일 및 일괄 다운로드",
+            "모델 삭제 기능 추가",
+            "다운로드 진행률 추적 및 취소 기능 제공"
+          ]
+        },
+        "버전": {
+          "title": "버전",
+          "items": [
+            "버전을 1.0.1에서 1.1.1로 업데이트"
+          ]
+        }
+      },
+      "parse_method": "markdown"
+    },
     {
       "version": "1.0.1",
       "project_type": "spring",
