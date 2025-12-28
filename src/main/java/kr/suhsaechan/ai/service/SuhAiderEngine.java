@@ -219,6 +219,115 @@ public class SuhAiderEngine {
     }
 
     /**
+     * 모델 삭제 (Ollama 서버에서 모델 제거)
+     * DELETE /api/delete
+     *
+     * @param modelName 삭제할 모델명 (예: "llama3.2", "llama3.2:latest")
+     * @return 삭제 성공 여부
+     * @throws SuhAiderException 네트워크 오류, 모델 미존재 등
+     */
+    public boolean deleteModel(String modelName) {
+        return deleteModel(modelName, true);
+    }
+
+    /**
+     * 모델 삭제 (Ollama 서버에서 모델 제거)
+     * DELETE /api/delete
+     *
+     * @param modelName   삭제할 모델명 (예: "llama3.2", "llama3.2:latest")
+     * @param checkExists 삭제 전 모델 존재 여부 확인 (false면 바로 삭제 시도)
+     * @return 삭제 성공 여부
+     * @throws SuhAiderException 네트워크 오류, 모델 미존재 등
+     */
+    public boolean deleteModel(String modelName, boolean checkExists) {
+        log.info("모델 삭제 시작 - 모델: {}, 존재 확인: {}", modelName, checkExists);
+
+        // 파라미터 검증
+        if (!StringUtils.hasText(modelName)) {
+            throw new SuhAiderException(SuhAiderErrorCode.INVALID_PARAMETER, "모델명이 비어있습니다");
+        }
+
+        // 존재 확인 (선택적)
+        if (checkExists && modelsInitialized) {
+            boolean exists = availableModels.stream()
+                    .anyMatch(model -> model.getName().equals(modelName));
+            if (!exists) {
+                log.warn("삭제 대상 모델이 캐시에 없음: {}", modelName);
+                throw new SuhAiderException(SuhAiderErrorCode.MODEL_NOT_FOUND,
+                        "모델을 찾을 수 없습니다: " + modelName);
+            }
+        }
+
+        String url = config.getBaseUrl() + "/api/delete";
+
+        try {
+            // 요청 Body 생성
+            String requestBody = objectMapper.writeValueAsString(
+                    java.util.Map.of("name", modelName)
+            );
+
+            Request request = addSecurityHeader(new Request.Builder())
+                    .url(url)
+                    .delete(RequestBody.create(requestBody, MediaType.parse("application/json")))
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                String responseBody = response.body() != null ? response.body().string() : "";
+
+                if (!response.isSuccessful()) {
+                    log.error("모델 삭제 실패 - HTTP {}: {}", response.code(), responseBody);
+
+                    // 404는 MODEL_NOT_FOUND로 처리
+                    if (response.code() == 404) {
+                        throw new SuhAiderException(SuhAiderErrorCode.MODEL_NOT_FOUND,
+                                "모델을 찾을 수 없습니다: " + modelName);
+                    }
+
+                    throw new SuhAiderException(SuhAiderErrorCode.MODEL_DELETE_FAILED,
+                            "HTTP " + response.code() + ": " + responseBody);
+                }
+
+                // 삭제 성공 - 캐시에서 해당 모델 제거
+                removeModelFromCache(modelName);
+
+                log.info("모델 삭제 완료: {}", modelName);
+                return true;
+            }
+
+        } catch (SuhAiderException e) {
+            throw e;
+        } catch (SocketTimeoutException e) {
+            log.error("모델 삭제 타임아웃: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.READ_TIMEOUT, e);
+        } catch (JsonProcessingException e) {
+            log.error("JSON 생성 실패: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.JSON_PARSE_ERROR, e);
+        } catch (IOException e) {
+            log.error("네트워크 오류: {}", e.getMessage());
+            throw new SuhAiderException(SuhAiderErrorCode.NETWORK_ERROR, e);
+        }
+    }
+
+    /**
+     * 캐시에서 특정 모델 제거
+     *
+     * @param modelName 제거할 모델명
+     */
+    private void removeModelFromCache(String modelName) {
+        if (!modelsInitialized) {
+            return;
+        }
+
+        int sizeBefore = availableModels.size();
+        availableModels.removeIf(model -> model.getName().equals(modelName));
+        int sizeAfter = availableModels.size();
+
+        if (sizeBefore != sizeAfter) {
+            log.debug("캐시에서 모델 제거됨: {} ({}개 → {}개)", modelName, sizeBefore, sizeAfter);
+        }
+    }
+
+    /**
      * 파일 크기 포맷팅 (사람이 읽기 쉽게)
      *
      * @param bytes 바이트 크기

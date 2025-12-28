@@ -35,7 +35,10 @@ public enum SuhAiderErrorCode {
 
     // 임베딩 에러
     EMBEDDING_FAILED("임베딩 생성에 실패했습니다."),
-    EMBEDDING_CONTEXT_OVERFLOW("입력 텍스트가 모델 컨텍스트 길이를 초과했습니다.");
+    EMBEDDING_CONTEXT_OVERFLOW("입력 텍스트가 모델 컨텍스트 길이를 초과했습니다."),
+
+    // 모델 관리 에러
+    MODEL_DELETE_FAILED("모델 삭제에 실패했습니다.");
 
     private final String message;
 }
