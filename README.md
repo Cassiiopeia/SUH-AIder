@@ -20,11 +20,19 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 - [빠른 시작](#빠른-시작)
 - [설정](#설정)
 - [사용 예제](#사용-예제)
-- [Function Calling 가이드](docs/FUNCTION_CALLING_GUIDE.md)
-- [JSON Schema 가이드](docs/JSON_SCHEMA_GUIDE.md)
 - [API 레퍼런스](#api-레퍼런스)
 - [테스트](#테스트)
 - [라이선스](#라이선스)
+
+### 📚 상세 가이드
+
+| 가이드 | 설명 |
+|--------|------|
+| [Function Calling 가이드](docs/FUNCTION_CALLING_GUIDE.md) | FunctionGemma 기반 의도 분류 |
+| [JSON Schema 가이드](docs/JSON_SCHEMA_GUIDE.md) | 구조화된 JSON 응답 생성 |
+| [모델 관리 가이드](docs/MODEL_MANAGEMENT_GUIDE.md) | 모델 다운로드(Pull) 및 삭제 |
+| [임베딩 & 청킹 가이드](docs/EMBEDDING_GUIDE.md) | 텍스트 임베딩 및 자동 분할 |
+| [스트리밍 가이드](docs/STREAMING_GUIDE.md) | 실시간 토큰 단위 응답 |
 
 ---
 
