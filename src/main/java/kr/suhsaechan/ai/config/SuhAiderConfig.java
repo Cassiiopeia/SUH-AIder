@@ -1,7 +1,12 @@
 package kr.suhsaechan.ai.config;
 
+import kr.suhsaechan.ai.exception.SuhAiderErrorCode;
+import kr.suhsaechan.ai.exception.SuhAiderException;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import java.net.URI;
+import java.time.Duration;
 
 /**
  * SUH-AIDER AI 서버 연동을 위한 설정 프로퍼티
@@ -48,6 +53,73 @@ public class SuhAiderConfig {
     private boolean enabled = true;
 
     /**
+     * 모델 목록 자동 갱신 설정
+     */
+    private ModelRefresh modelRefresh = new ModelRefresh();
+
+    /**
+     * 임베딩 기본 설정
+     */
+    private Embedding embedding = new Embedding();
+
+    /**
+     * 비동기 실행 설정
+     */
+    private Async async = new Async();
+
+    /**
+     * 모델 다운로드 설정
+     */
+    private Pull pull = new Pull();
+
+    /**
+     * 기본 URL 설정 (후행 슬래시 제거)
+     *
+     * <p>경로를 문자열로 이어 붙이기 때문에 {@code https://host/}처럼 슬래시로 끝나면
+     * 모든 요청이 {@code //api/tags}가 됩니다. 바인딩 시점에 정규화합니다.</p>
+     *
+     * @param baseUrl 설정된 기본 URL
+     */
+    public void setBaseUrl(String baseUrl) {
+        if (baseUrl == null) {
+            this.baseUrl = null;
+            return;
+        }
+        String trimmed = baseUrl.trim();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        this.baseUrl = trimmed;
+    }
+
+    /**
+     * 설정 유효성 검증
+     *
+     * <p>잘못된 URL로 뜬 애플리케이션은 첫 호출 시점에야 실패합니다.
+     * 시작 시점에 걸러 원인을 명확히 합니다.</p>
+     *
+     * @throws SuhAiderException baseUrl이 비어 있거나 http/https 형식이 아닌 경우
+     */
+    public void validate() {
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            throw new SuhAiderException(SuhAiderErrorCode.BASE_URL_INVALID, "baseUrl이 비어있습니다");
+        }
+
+        URI uri;
+        try {
+            uri = URI.create(baseUrl);
+        } catch (IllegalArgumentException e) {
+            throw new SuhAiderException(SuhAiderErrorCode.BASE_URL_INVALID, baseUrl, e);
+        }
+
+        String scheme = uri.getScheme();
+        if (scheme == null || !(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null) {
+            throw new SuhAiderException(SuhAiderErrorCode.BASE_URL_INVALID,
+                    "http:// 또는 https:// 형식이어야 합니다: " + baseUrl);
+        }
+    }
+
+    /**
      * Security Header 설정 클래스
      */
     @Data
@@ -78,16 +150,6 @@ public class SuhAiderConfig {
     }
 
     /**
-     * 모델 목록 자동 갱신 설정
-     */
-    private ModelRefresh modelRefresh = new ModelRefresh();
-
-    /**
-     * 임베딩 기본 설정
-     */
-    private Embedding embedding = new Embedding();
-
-    /**
      * 모델 목록 자동 갱신 설정 클래스
      */
     @Data
@@ -96,33 +158,24 @@ public class SuhAiderConfig {
         /**
          * 초기화 시 모델 목록 로드 여부
          * 기본값: true
-         * true: Bean 초기화 시 서버에서 모델 목록을 로드합니다
-         * false: 모델 목록을 로드하지 않습니다 (수동 호출 필요)
          */
         private boolean loadOnStartup = true;
 
         /**
          * 스케줄링 활성화 여부
          * 기본값: false
-         * true: 지정된 cron 표현식에 따라 자동으로 모델 목록을 갱신합니다
-         * false: 자동 갱신하지 않습니다 (수동 호출 또는 초기화 시에만 로드)
          */
         private boolean schedulingEnabled = false;
 
         /**
-         * 갱신 스케줄 Cron 표현식
+         * 갱신 스케줄 Cron 표현식 (초 분 시 일 월 요일)
          * 기본값: "0 0 4 * * *" (매일 오전 4시)
-         * 형식: 초 분 시 일 월 요일
-         * 예시:
-         *   - "0 0 4 * * *": 매일 오전 4시
-         *   - "0 0 0 * * MON": 매주 월요일 자정
          */
         private String cron = "0 0 4 * * *";
 
         /**
          * Cron 표현식 시간대
          * 기본값: Asia/Seoul
-         * 예시: UTC, America/New_York, Europe/London
          */
         private String timezone = "Asia/Seoul";
     }
@@ -175,24 +228,48 @@ public class SuhAiderConfig {
 
             /**
              * 청킹 전략
-             * 기본값: FIXED_SIZE
              * 옵션: FIXED_SIZE, SENTENCE, PARAGRAPH
              */
             private String strategy = "FIXED_SIZE";
 
             /**
-             * 청크당 최대 문자 수
-             * 기본값: 500
-             * // 토큰 ≈ 문자/4 근사치
+             * 청크당 최대 문자 수 (토큰 ≈ 문자/4 근사치)
              */
             private int chunkSize = 500;
 
             /**
-             * 청크 간 오버랩 문자 수
-             * 기본값: 50
-             * // 의미 손실 방지 (10~20% 권장)
+             * 청크 간 오버랩 문자 수 (의미 손실 방지, 10~20% 권장)
              */
             private int overlapSize = 50;
         }
+    }
+
+    /**
+     * 비동기 실행 설정 클래스
+     */
+    @Data
+    public static class Async {
+
+        /**
+         * 비동기/스트리밍 전용 스레드풀 크기
+         *
+         * <p>모델 다운로드는 수십 분 이상 블로킹될 수 있어 공용 ForkJoinPool을 쓰면
+         * 소비자 앱 전체의 병렬 처리가 굶습니다. 전용 풀로 격리합니다.</p>
+         */
+        private int poolSize = 4;
+    }
+
+    /**
+     * 모델 다운로드 설정 클래스
+     */
+    @Data
+    public static class Pull {
+
+        /**
+         * 동기 다운로드 최대 대기 시간
+         *
+         * <p>기본 60분. 무제한 대기는 장애 시 스레드가 영구히 묶입니다.</p>
+         */
+        private Duration timeout = Duration.ofMinutes(60);
     }
 }

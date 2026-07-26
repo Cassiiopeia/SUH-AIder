@@ -3,7 +3,12 @@ package kr.suhsaechan.ai.service;
 import kr.suhsaechan.ai.model.ChatMessage;
 import kr.suhsaechan.ai.model.ChatRequest;
 import kr.suhsaechan.ai.model.ChatResponse;
+import kr.suhsaechan.ai.model.JsonSchema;
+import kr.suhsaechan.ai.support.TestModels;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -12,140 +17,110 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Chat API 통합 테스트
+ * Chat API 통합 테스트 (실서버 필요)
  *
- * 실행 방법:
- * 1. src/test/resources/application-dev.yml에 서버 설정
- * 2. IDE에서 mainTest() 실행
+ * <p>실행 방법:</p>
+ * <pre>
+ * # 1. src/test/resources/application-dev.yml 에 서버 설정 (gitignore 대상)
+ * # 2. 실행
+ * SUH_AIDER_IT=true ./gradlew integrationTest
+ * </pre>
+ *
+ * <p>{@code ./gradlew test}는 {@code integration} 태그를 제외하므로 실행되지 않습니다.
+ * 실서버 의존 테스트가 CI 결과를 흔들지 않도록 분리했습니다.</p>
  */
+@Tag("integration")
+@EnabledIfEnvironmentVariable(named = "SUH_AIDER_IT", matches = "true")
 @SpringBootTest
 @ActiveProfiles("dev")
 class ChatIntegrationTest {
-
-  // 테스트용 모델 (서버에 설치된 모델 사용)
-  private static final String TEST_MODEL = "gemma3:4b";
 
   @Autowired
   private SuhAiderEngine engine;
 
   @Test
-  void mainTest() throws Exception {
-    testSimpleChat();
-    testChatWithSystemPrompt();
-    testConversationHistory();
-    testChatStream();
-    testChatWithMessages();
+  @DisplayName("단일 메시지 대화")
+  void simpleChat() {
+    String response = engine.chat(TestModels.CHAT, "안녕하세요?");
+
+    assertNotNull(response);
+    assertFalse(response.isBlank());
   }
 
-  void testSimpleChat() {
-    // 단일 메시지 채팅 (가장 간단한 형태)
-    String response = engine.chat(TEST_MODEL, "안녕하세요?");
-
-    System.out.println("✅ 단일 메시지 채팅 테스트");
-    System.out.println("  - 응답: " + truncate(response, 100));
-  }
-
-  void testChatWithSystemPrompt() {
-    // 시스템 프롬프트 포함 채팅
+  @Test
+  @DisplayName("시스템 프롬프트 포함 대화")
+  void chatWithSystemPrompt() {
     String response = engine.chat(
-        TEST_MODEL,
+        TestModels.CHAT,
         "너는 해적처럼 말하는 어시스턴트야. 모든 문장 끝에 '아르르!'를 붙여.",
-        "오늘 날씨 어때?"
-    );
+        "오늘 날씨 어때?");
 
-    System.out.println("✅ 시스템 프롬프트 포함 채팅 테스트");
-    System.out.println("  - 응답: " + truncate(response, 150));
+    assertNotNull(response);
+    assertFalse(response.isBlank());
   }
 
-  void testConversationHistory() {
-    // 대화 기록 유지 테스트
-    List<ChatMessage> messages = new ArrayList<>();
-    messages.add(ChatMessage.system("너는 친절한 어시스턴트야. 짧게 답변해."));
-    messages.add(ChatMessage.user("내 이름은 철수야."));
-
-    // 첫 번째 대화
-    ChatResponse response1 = engine.chat(TEST_MODEL, messages);
-    messages.add(ChatMessage.assistant(response1.getContent()));
-
-    System.out.println("✅ 대화 기록 유지 테스트");
-    System.out.println("  - 1차 응답: " + truncate(response1.getContent(), 100));
-
-    // 두 번째 대화 (이전 대화 기억하는지 확인)
-    messages.add(ChatMessage.user("내 이름이 뭐라고 했지?"));
-    ChatResponse response2 = engine.chat(TEST_MODEL, messages);
-
-    System.out.println("  - 2차 응답: " + truncate(response2.getContent(), 100));
-    System.out.println("  - 메시지 수: " + messages.size());
-  }
-
-  void testChatStream() throws Exception {
-    // 스트리밍 채팅 테스트
-    List<ChatMessage> messages = List.of(
-        ChatMessage.user("1부터 5까지 세어줘. 각 숫자마다 줄바꿈해서.")
-    );
-
-    StringBuilder fullResponse = new StringBuilder();
-    CountDownLatch latch = new CountDownLatch(1);
-    AtomicBoolean completed = new AtomicBoolean(false);
-
-    System.out.println("✅ 스트리밍 채팅 테스트");
-    System.out.print("  - 스트림: ");
-
-    engine.chatStream(TEST_MODEL, messages, new StreamCallback() {
-      @Override
-      public void onNext(String chunk) {
-        System.out.print(chunk);
-        fullResponse.append(chunk);
-      }
-
-      @Override
-      public void onComplete() {
-        completed.set(true);
-        latch.countDown();
-        System.out.println();
-        System.out.println("  - 완료! 총 " + fullResponse.length() + "자");
-      }
-
-      @Override
-      public void onError(Throwable error) {
-        System.err.println("  - 에러: " + error.getMessage());
-        latch.countDown();
-      }
-    });
-
-    // 최대 60초 대기
-    latch.await(60, TimeUnit.SECONDS);
-  }
-
-  void testChatWithMessages() {
-    // ChatRequest 빌더 사용 테스트
-    ChatRequest request = ChatRequest.builder()
-        .model(TEST_MODEL)
+  @Test
+  @DisplayName("대화 기록을 유지한다")
+  void conversationHistory() {
+    ChatResponse response = engine.chat(ChatRequest.builder()
+        .model(TestModels.CHAT)
         .messages(List.of(
-            ChatMessage.system("너는 JSON으로만 응답하는 봇이야."),
-            ChatMessage.user("사과의 색깔을 JSON으로 알려줘.")
-        ))
-        .stream(false)
-        .build();
+            ChatMessage.system("너는 친절한 어시스턴트야. 짧게 답변해."),
+            ChatMessage.user("내 이름은 철수야."),
+            ChatMessage.assistant("반갑습니다, 철수님!"),
+            ChatMessage.user("내 이름이 뭐라고 했지?")))
+        .build());
 
-    ChatResponse response = engine.chat(request);
-
-    System.out.println("✅ ChatRequest 빌더 테스트");
-    System.out.println("  - 모델: " + response.getModel());
-    System.out.println("  - 응답: " + truncate(response.getContent(), 150));
-    System.out.println("  - 처리 시간: " + response.getTotalDurationMs() + "ms");
-    System.out.println("  - 완료 여부: " + response.getDone());
+    assertNotNull(response.getContent());
+    assertTrue(response.getContent().contains("철수"), "대화 기록이 유지되면 이름을 기억해야 한다");
   }
 
-  /**
-   * 문자열 자르기 (긴 응답 출력용)
-   */
-  private String truncate(String text, int maxLength) {
-    if (text == null) return "null";
-    if (text.length() <= maxLength) return text;
-    return text.substring(0, maxLength) + "...";
+  @Test
+  @DisplayName("responseSchema가 네이티브 format으로 동작한다")
+  void chatWithSchema() {
+    ChatResponse response = engine.chat(ChatRequest.builder()
+        .model(TestModels.CHAT)
+        .messages(List.of(ChatMessage.user("홍길동은 30살이다. 이름과 나이를 뽑아줘.")))
+        .responseSchema(JsonSchema.of("name", "string", "age", "integer"))
+        .build());
+
+    String content = response.getContent();
+    assertNotNull(content);
+    assertTrue(content.trim().startsWith("{"), "구조화 출력이면 JSON이어야 한다: " + content);
+  }
+
+  @Test
+  @DisplayName("스트리밍 응답을 조각 단위로 받는다")
+  void chatStream() throws Exception {
+    List<String> chunks = new ArrayList<>();
+    CountDownLatch latch = new CountDownLatch(1);
+
+    engine.chatStream(TestModels.CHAT, List.of(ChatMessage.user("1부터 5까지 세어줘")),
+        new StreamCallback() {
+          @Override
+          public void onNext(String chunk) {
+            chunks.add(chunk);
+          }
+
+          @Override
+          public void onComplete() {
+            latch.countDown();
+          }
+
+          @Override
+          public void onError(Throwable error) {
+            latch.countDown();
+            throw new AssertionError(error);
+          }
+        });
+
+    assertTrue(latch.await(2, TimeUnit.MINUTES), "스트리밍이 시간 내에 끝나야 한다");
+    assertFalse(chunks.isEmpty());
   }
 }

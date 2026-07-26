@@ -157,15 +157,17 @@ public class FunctionResponse {
 
     // ========== 정적 팩토리 ==========
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-
     /**
      * ChatResponse에서 FunctionResponse 생성
      *
+     * <p>v2.0부터 파싱에 쓸 {@link ObjectMapper}를 주입받습니다. 클래스마다 자체 매퍼를
+     * 들고 있으면 설정이 갈려 같은 응답이 다르게 해석될 수 있습니다.</p>
+     *
      * @param chatResponse Ollama Chat API 응답
+     * @param objectMapper arguments 파싱에 사용할 매퍼
      * @return FunctionResponse 인스턴스
      */
-    public static FunctionResponse fromChatResponse(ChatResponse chatResponse) {
+    public static FunctionResponse fromChatResponse(ChatResponse chatResponse, ObjectMapper objectMapper) {
         if (chatResponse == null) {
             return FunctionResponse.builder()
                     .hasToolCall(false)
@@ -186,7 +188,7 @@ public class FunctionResponse {
         ChatMessage.ToolCall.Function function = firstCall.getFunction();
 
         String toolName = function.getName();
-        Map<String, Object> argsMap = parseArguments(function.getArguments());
+        Map<String, Object> argsMap = parseArguments(function.getArguments(), objectMapper);
 
         return FunctionResponse.builder()
                 .toolName(toolName)
@@ -199,11 +201,12 @@ public class FunctionResponse {
     /**
      * arguments 파싱 (JSON 문자열 또는 Map)
      *
-     * @param arguments 원본 arguments (String 또는 Map)
+     * @param arguments    원본 arguments (String 또는 Map)
+     * @param objectMapper 문자열 파싱에 사용할 매퍼
      * @return 파싱된 Map
      */
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> parseArguments(Object arguments) {
+    private static Map<String, Object> parseArguments(Object arguments, ObjectMapper objectMapper) {
         if (arguments == null) {
             return Collections.emptyMap();
         }

@@ -64,7 +64,7 @@ suh:
   aider:
     embedding:
       default-model: nomic-embed-text  # 기본 임베딩 모델
-      truncate: true                   # 컨텍스트 초과 시 자르기
+      truncate: true                   # 컨텍스트 초과 시 자르기 (v2.0부터 실제 반영)
       keep-alive: 5m                   # 모델 메모리 유지
 
       # 청킹 설정
@@ -418,7 +418,13 @@ public void batchProcess(List<String> texts) {
 
 ## 트러블슈팅
 
-### EMBEDDING_CONTEXT_OVERFLOW
+### 컨텍스트 길이 초과
+
+> **v2.0 변경**: `EMBEDDING_CONTEXT_OVERFLOW` 에러 코드는 실제로 사용된 적이 없어 제거됐습니다.
+> 서버가 반환하는 상태에 따라 `SERVER_ERROR` 또는 `INVALID_RESPONSE`로 전달됩니다.
+>
+> 또한 v1.x에서는 `suh.aider.embedding.truncate` 설정이 **반영되지 않는 버그**가 있었습니다.
+> v2.0에서 정상 동작하므로, `truncate: false`로 두셨다면 이제 실제로 에러가 반환됩니다.
 
 **증상**: 입력 텍스트가 모델 컨텍스트를 초과
 

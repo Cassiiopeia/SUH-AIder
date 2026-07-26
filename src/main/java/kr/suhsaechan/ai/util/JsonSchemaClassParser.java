@@ -6,6 +6,7 @@ import kr.suhsaechan.ai.model.PropertySchema;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
@@ -67,6 +68,15 @@ public class JsonSchemaClassParser {
         // 2. 모든 필드 순회
         Field[] fields = clazz.getDeclaredFields();
         for (Field field : fields) {
+            // 스키마 대상이 아닌 필드 제외
+            // - 합성 필드: 내부 클래스/로컬 클래스에 컴파일러가 넣는 this$0, val$xxx 등
+            // - static 필드: serialVersionUID, 상수 등 인스턴스 데이터가 아닌 것
+            // 이들을 포함하면 존재하지도 않는 필드를 AI에게 요구하게 된다
+            if (field.isSynthetic() || Modifier.isStatic(field.getModifiers())) {
+                log.debug("필드 제외 (합성/정적): {}.{}", clazz.getSimpleName(), field.getName());
+                continue;
+            }
+
             // @AiHidden 체크
             if (field.isAnnotationPresent(AiHidden.class)) {
                 log.debug("필드 제외 (@AiHidden): {}.{}", clazz.getSimpleName(), field.getName());
