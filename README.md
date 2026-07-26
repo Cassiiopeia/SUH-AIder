@@ -5,7 +5,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 <!-- AUTO-VERSION-SECTION: DO NOT EDIT MANUALLY -->
 <!-- 이 섹션은 .github/workflows/PROJECT-README-VERSION-UPDATE.yaml에 의해 자동으로 업데이트됩니다 -->
 <!-- 수정하지마세요 자동으로 동기화 됩니다 -->
-## 최신 버전 : v1.1.2 (2025-12-28)
+## 최신 버전 : v2.0.1 (2026-07-26)
 
 [전체 버전 기록 보기](CHANGELOG.md)
 <!-- END-AUTO-VERSION-SECTION -->
@@ -95,11 +95,14 @@ v2.0은 메이저 업그레이드입니다. 호출 문법은 대부분 그대로
 
 ## 설치
 
+> 아래 예제의 버전은 작성 시점 기준입니다. **실제 최신 버전은 이 문서 맨 위의 "최신 버전"** 을 확인하세요.
+> 릴리스마다 자동으로 갱신되는 건 그 배너이고, 아래 예제 숫자는 수동 관리라 뒤처져 있을 수 있습니다.
+
 ### Gradle
 
 ```gradle
 dependencies {
-    implementation 'kr.suhsaechan:suh-aider:2.0.0'
+    implementation 'kr.suhsaechan:suh-aider:2.0.2'
 }
 ```
 
@@ -109,7 +112,7 @@ dependencies {
 <dependency>
     <groupId>kr.suhsaechan</groupId>
     <artifactId>suh-aider</artifactId>
-    <version>2.0.0</version>
+    <version>2.0.2</version>
 </dependency>
 ```
 
