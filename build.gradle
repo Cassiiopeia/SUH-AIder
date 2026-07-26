@@ -66,8 +66,17 @@ tasks.register('integrationTest', Test) {
 	shouldRunAfter tasks.named('test')
 }
 
+// 이 프로젝트는 실행 가능한 앱이 아니라 라이브러리이므로 bootJar를 끈다.
 bootJar { enabled = false }
-jar { enabled = true }
+
+jar {
+	enabled = true
+	// Spring Boot 플러그인은 bootJar와 구분하려고 일반 jar에 'plain' 분류자를 붙인다.
+	// 분류자가 붙으면 메인 아티팩트가 없는 것으로 취급되어 POM packaging이 'pom'이 되고,
+	// Maven 사용자가 의존성을 걸어도 실제 코드가 딸려오지 않는다.
+	// bootJar를 끈 이상 이름이 충돌할 일이 없으므로 분류자를 제거한다.
+	archiveClassifier = ''
+}
 
 publishing {
 	publications {
@@ -76,7 +85,7 @@ publishing {
 			pom {
 				name = 'suh-aider'
 				description = '서새찬 AI 서버 통신 라이브러리'
-				url = 'https://github.com/Cassiiopeia/suh-aider/'
+				url = 'https://github.com/Cassiiopeia/SUH-AIder'
 			}
 		}
 	}

@@ -95,11 +95,14 @@ v2.0은 메이저 업그레이드입니다. 호출 문법은 대부분 그대로
 
 ## 설치
 
+> 아래 예제의 버전은 작성 시점 기준입니다. **실제 최신 버전은 이 문서 맨 위의 "최신 버전"** 을 확인하세요.
+> 릴리스마다 자동으로 갱신되는 건 그 배너이고, 아래 예제 숫자는 수동 관리라 뒤처져 있을 수 있습니다.
+
 ### Gradle
 
 ```gradle
 dependencies {
-    implementation 'kr.suhsaechan:suh-aider:2.0.0'
+    implementation 'kr.suhsaechan:suh-aider:2.0.2'
 }
 ```
 
@@ -109,7 +112,7 @@ dependencies {
 <dependency>
     <groupId>kr.suhsaechan</groupId>
     <artifactId>suh-aider</artifactId>
-    <version>2.0.0</version>
+    <version>2.0.2</version>
 </dependency>
 ```
 
