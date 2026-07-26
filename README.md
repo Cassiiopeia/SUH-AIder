@@ -33,6 +33,25 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 | [모델 관리 가이드](docs/MODEL_MANAGEMENT_GUIDE.md) | 모델 다운로드(Pull) 및 삭제 |
 | [임베딩 & 청킹 가이드](docs/EMBEDDING_GUIDE.md) | 텍스트 임베딩 및 자동 분할 |
 | [스트리밍 가이드](docs/STREAMING_GUIDE.md) | 실시간 토큰 단위 응답 |
+| [v2.0 마이그레이션](docs/MIGRATION-v2.md) | v1.x에서 올라올 때 필요한 코드 변경 |
+
+---
+
+## ⚠️ v2.0 주요 변경
+
+v2.0은 메이저 업그레이드입니다. 호출 문법은 대부분 그대로지만 일부 코드 수정이 필요합니다.
+전체 내용과 마이그레이션 방법은 **[v2.0 마이그레이션 가이드](docs/MIGRATION-v2.md)** 를 참고하세요.
+
+| 변경 | 요약 |
+|------|------|
+| `PullCallback.onError` 제거 | 종료 통지가 `onComplete(PullResult)` 하나로 통일 (정확히 1회 보장) |
+| `responseSchema` 처리 방식 | 프롬프트 증강 → Ollama 네이티브 `format`. **스트리밍에서도 동작** |
+| `SuhAiderCustomizer` 정리 | 동작하지 않던 `customReadTimeout`/`promptPrefix`/`promptSuffix` 제거 |
+| `SuhAiderErrorCode` 정리 | 타임아웃 코드 통합(`TIMEOUT`), 미사용 코드 제거, `CONNECTION_FAILED` 추가 |
+| 전용 스레드풀 도입 | 다운로드·스트리밍이 애플리케이션 공용 ForkJoinPool을 점유하지 않음 |
+| 도메인 API 분리 | `ChatApi`, `PullApi` 등을 개별 주입 가능 (테스트 대체 용이) |
+| 동시성 버그 수정 | 모델 캐시 조회 중 `ConcurrentModificationException` 발생 문제 해결 |
+| 설정 반영 버그 수정 | `embedding.truncate` 설정이 이제 실제로 적용됨 |
 
 ---
 
@@ -80,7 +99,7 @@ AI 서버와 간편하게 통신할 수 있는 Spring Boot 라이브러리입니
 
 ```gradle
 dependencies {
-    implementation 'kr.suhsaechan:suh-aider:0.0.10'
+    implementation 'kr.suhsaechan:suh-aider:2.0.0'
 }
 ```
 
@@ -90,7 +109,7 @@ dependencies {
 <dependency>
     <groupId>kr.suhsaechan</groupId>
     <artifactId>suh-aider</artifactId>
-    <version>0.0.10</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
@@ -183,6 +202,25 @@ suh:
     # 기본값: 30
     # 요청 데이터를 서버로 전송하는 최대 시간
     write-timeout: 30
+
+    #==========================================================================
+    # 비동기 실행 설정 (v2.0 신규)
+    #==========================================================================
+    async:
+      # 비동기/스트리밍 전용 스레드풀 크기
+      # 기본값: 4
+      # 모델 다운로드와 스트리밍이 이 풀에서 실행됩니다.
+      # 전용 풀을 쓰기 때문에 애플리케이션 공용 ForkJoinPool을 점유하지 않습니다.
+      pool-size: 4
+
+    #==========================================================================
+    # 모델 다운로드 설정 (v2.0 신규)
+    #==========================================================================
+    pull:
+      # 동기 pullModel() 최대 대기 시간
+      # 기본값: 60m
+      # 초과 시 MODEL_PULL_TIMEOUT 예외가 발생합니다.
+      timeout: 60m
 
     #==========================================================================
     # Security Header 설정 (선택적)
@@ -494,7 +532,8 @@ public SseEmitter streamGenerate(@RequestParam String prompt) {
 }
 ```
 
-> **주의**: 스트리밍 모드에서는 `responseSchema`가 지원되지 않습니다. JSON 형식 응답이 필요하면 `generate()` 메서드를 사용하세요.
+> **v2.0**: 스트리밍에서도 `responseSchema`가 동작합니다. 조각을 모두 이어 붙이면 유효한 JSON이 됩니다.
+> (v1.x에서는 경고만 남기고 무시됐습니다.)
 
 ### 7. 대화형 Chat API
 
@@ -807,11 +846,6 @@ PullHandle handle = suhAiderEngine.pullModelStream("llama3.2:70b", new PullCallb
         } else {
             System.out.println("실패: " + result.getErrorMessage());
         }
-    }
-
-    @Override
-    public void onError(Throwable error) {
-        System.err.println("에러: " + error.getMessage());
     }
 });
 
@@ -1304,9 +1338,12 @@ FunctionTool.builder()
 
 | 메서드 | 설명 |
 |--------|------|
-| `onProgress(PullProgress progress)` | 진행 상태 업데이트 시 호출됩니다 |
-| `onComplete(PullResult result)` | 다운로드 완료 시 호출됩니다 (성공/실패/취소) |
-| `onError(Throwable error)` | 에러 발생 시 호출됩니다 |
+| `onProgress(PullProgress progress)` | 진행 상태 업데이트 시 호출됩니다 (0회 이상) |
+| `onComplete(PullResult result)` | 종료 시 **정확히 한 번** 호출됩니다 (성공/실패/취소 모두) |
+
+> **v2.0 변경**: `onError`가 제거되고 종료 지점이 `onComplete` 하나로 통일됐습니다.
+> 실패 원인은 `result.getErrorMessage()`와 `result.getCause()`로 확인하세요.
+> 자세한 내용은 [마이그레이션 가이드](docs/MIGRATION-v2.md#1-pullcallback-onerror-제거) 참고.
 
 #### `PullHandle`
 진행 중인 다운로드의 상태 확인 및 취소에 사용합니다.
@@ -1340,6 +1377,7 @@ FunctionTool.builder()
 | `cancelled` | `boolean` | 취소 여부 |
 | `totalDurationMs` | `long` | 소요 시간 (밀리초) |
 | `errorMessage` | `String` | 실패 시 에러 메시지 |
+| `cause` | `Throwable` | 실패 원인 예외 (있는 경우) |
 
 **편의 메서드**:
 - `getFormattedDuration()`: 포맷된 소요 시간 (예: "2분 30초")
@@ -1348,17 +1386,25 @@ FunctionTool.builder()
 
 | 에러 코드 | 설명 |
 |-----------|------|
-| `NETWORK_ERROR` | 네트워크 연결 오류 |
-| `MODEL_NOT_FOUND` | 요청한 모델을 찾을 수 없음 |
+| `BASE_URL_INVALID` | 서버 URL 형식 오류 (시작 시 검증) |
+| `NETWORK_ERROR` | 네트워크 오류 |
+| `CONNECTION_FAILED` | 서버 연결 실패 (연결 거부, 호스트 미해석) |
+| `TIMEOUT` | 응답 대기 시간 초과 |
+| `INVALID_RESPONSE` | 응답 형식 오류 |
+| `JSON_PARSE_ERROR` | JSON 파싱 오류 |
+| `EMPTY_RESPONSE` | 빈 응답 |
+| `MODEL_NOT_FOUND` | 요청한 모델을 찾을 수 없음 (404) |
 | `INVALID_PARAMETER` | 잘못된 파라미터 |
+| `SERVER_ERROR` | AI 서버 오류 (500/502/503/504) |
 | `UNAUTHORIZED` | API 키가 올바르지 않음 (401) |
 | `FORBIDDEN` | 접근 권한 없음 (403) |
-| `SERVER_ERROR` | AI 서버 오류 (500/502/503) |
-| `EMBEDDING_FAILED` | 임베딩 생성 실패 |
-| `EMBEDDING_CONTEXT_OVERFLOW` | 입력 텍스트가 모델 컨텍스트 길이 초과 |
 | `MODEL_DELETE_FAILED` | 모델 삭제 실패 |
 | `MODEL_PULL_FAILED` | 모델 다운로드 실패 |
 | `MODEL_PULL_CANCELLED` | 모델 다운로드 취소됨 |
+| `MODEL_PULL_TIMEOUT` | 동기 다운로드 대기 시간 초과 |
+
+> **v2.0 변경**: `READ_TIMEOUT`/`CONNECTION_TIMEOUT`이 `TIMEOUT`으로 통합됐고,
+> 사용처가 없던 `API_KEY_MISSING`·`EMBEDDING_FAILED`·`EMBEDDING_CONTEXT_OVERFLOW`가 제거됐습니다.
 
 > **참고**: API 키는 이제 선택적입니다. 설정하지 않으면 인증 헤더를 추가하지 않습니다.
 

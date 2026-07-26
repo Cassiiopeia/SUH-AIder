@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'kr.suhsaechan'
-version = '1.1.2'
+version = '2.0.0'
 description = 'SUH-AIDER'
 
 java {
@@ -39,13 +39,31 @@ dependencies {
 
 	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
+// 기본 test 태스크는 네트워크가 필요 없는 유닛 테스트만 실행한다.
+// 실서버에 의존하는 테스트가 섞여 있으면 CI 결과를 신뢰할 수 없다.
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		excludeTags 'integration'
+	}
+}
+
+// 실서버 대상 통합 테스트: ./gradlew integrationTest
+// SUH_AIDER_IT=true 환경변수가 있어야 개별 테스트가 실제로 동작한다.
+tasks.register('integrationTest', Test) {
+	description = '실제 AI 서버를 대상으로 하는 통합 테스트'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'integration'
+	}
+	shouldRunAfter tasks.named('test')
 }
 
 bootJar { enabled = false }

@@ -1,5 +1,7 @@
 package kr.suhsaechan.ai.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import kr.suhsaechan.ai.util.FormatUtils;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -41,6 +43,15 @@ public class PullResult {
     private String errorMessage;
 
     /**
+     * 실패 원인 예외 (있는 경우)
+     *
+     * <p>{@code PullCallback.onError}가 제거되면서 예외 정보를 담을 자리가 필요해졌습니다.
+     * 네트워크 오류 등으로 실패한 경우 원본 예외가 여기 들어옵니다.</p>
+     */
+    @JsonIgnore
+    private Throwable cause;
+
+    /**
      * 성공 결과 생성
      *
      * @param modelName  모델명
@@ -79,11 +90,24 @@ public class PullResult {
      * @return 실패 PullResult
      */
     public static PullResult failure(String modelName, String errorMessage) {
+        return failure(modelName, errorMessage, null);
+    }
+
+    /**
+     * 실패 결과 생성 (원인 예외 포함)
+     *
+     * @param modelName    모델명
+     * @param errorMessage 에러 메시지
+     * @param cause        원인 예외 (null 가능)
+     * @return 실패 PullResult
+     */
+    public static PullResult failure(String modelName, String errorMessage, Throwable cause) {
         return PullResult.builder()
                 .modelName(modelName)
                 .success(false)
                 .cancelled(false)
                 .errorMessage(errorMessage)
+                .cause(cause)
                 .build();
     }
 
@@ -93,20 +117,6 @@ public class PullResult {
      * @return 예: "2분 30초", "1시간 15분"
      */
     public String getFormattedDuration() {
-        if (totalDurationMs <= 0) {
-            return "N/A";
-        }
-
-        long seconds = totalDurationMs / 1000;
-        long minutes = seconds / 60;
-        long hours = minutes / 60;
-
-        if (hours > 0) {
-            return String.format("%d시간 %d분", hours, minutes % 60);
-        } else if (minutes > 0) {
-            return String.format("%d분 %d초", minutes, seconds % 60);
-        } else {
-            return String.format("%d초", seconds);
-        }
+        return FormatUtils.formatDuration(totalDurationMs);
     }
 }

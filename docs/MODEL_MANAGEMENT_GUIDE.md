@@ -84,11 +84,6 @@ public void downloadWithProgress() {
                 System.out.println("완료! 소요시간: " + result.getFormattedDuration());
             }
         }
-
-        @Override
-        public void onError(Throwable error) {
-            System.err.println("에러: " + error.getMessage());
-        }
     });
 }
 ```
@@ -152,11 +147,6 @@ PullHandle handle = engine.pullModelStream("llama3.2:70b", new PullCallback() {
         } else {
             System.out.println("실패: " + result.getErrorMessage());
         }
-    }
-
-    @Override
-    public void onError(Throwable error) {
-        System.err.println("에러 발생: " + error.getMessage());
     }
 });
 
@@ -233,11 +223,6 @@ List<PullHandle> handles = engine.pullModelsParallel(
         public void onComplete(PullResult result) {
             System.out.println(result.getModelName() + ": " +
                 (result.isSuccess() ? "완료" : "실패"));
-        }
-
-        @Override
-        public void onError(Throwable error) {
-            error.printStackTrace();
         }
     }
 );
@@ -347,11 +332,6 @@ public class ModelController {
                 public void onComplete(PullResult result) {
                     sink.complete();
                 }
-
-                @Override
-                public void onError(Throwable error) {
-                    sink.error(error);
-                }
             });
         });
     }
@@ -362,7 +342,7 @@ public class ModelController {
 
 ## 트러블슈팅
 
-### 다운로드 실패: CONNECTION_TIMEOUT
+### 다운로드 실패: TIMEOUT
 
 **증상**: 다운로드 시작 전 타임아웃
 
@@ -486,7 +466,9 @@ modelList.parallelStream().forEach(model -> {
 |--------|------|
 | `onProgress(PullProgress)` | 진행 상태 업데이트 시 호출 |
 | `onComplete(PullResult)` | 완료 시 호출 (성공/실패/취소) |
-| `onError(Throwable)` | 예외 발생 시 호출 |
+
+> **v2.0 변경**: `onError`가 제거됐습니다. 성공·실패·취소 모두 `onComplete(PullResult)`로
+> **정확히 한 번** 전달됩니다. 예외 객체는 `result.getCause()`로 확인하세요.
 
 ### PullHandle
 

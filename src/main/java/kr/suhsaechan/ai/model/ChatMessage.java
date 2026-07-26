@@ -139,6 +139,15 @@ public class ChatMessage {
     public static class ToolCall {
 
         /**
+         * 도구 호출 식별자
+         *
+         * <p>Ollama가 {@code "id":"call_xxxx"} 형태로 내려주는 값입니다.
+         * 멀티턴 도구 대화에서 어떤 호출에 대한 결과인지 짝지을 때 필요합니다.
+         * v1.x에는 이 필드가 없어 서버가 준 값이 그대로 버려졌습니다.</p>
+         */
+        private String id;
+
+        /**
          * 호출할 함수 정보
          */
         private Function function;
