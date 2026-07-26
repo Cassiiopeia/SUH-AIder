@@ -7,13 +7,19 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * AI 응답에서 순수 JSON 추출 및 검증 유틸리티
  *
- * AI 모델이 마크다운 코드 블록이나 설명문과 함께 JSON을 반환하는 경우,
- * 순수 JSON만 추출합니다.
+ * <p>v2.0부터 스키마는 Ollama 네이티브 {@code format} 파라미터로 전달되므로 대부분의 모델은
+ * 이미 순수 JSON을 반환합니다. 다만 소형 모델이 규약을 어기고 마크다운 코드 블록으로 감싸는
+ * 경우가 남아 있어 방어선으로 유지합니다.</p>
+ *
+ * <p>자체 {@code ObjectMapper}를 들고 있지 않습니다. 검증에는 호출자가 쓰는 매퍼를 넘겨받아
+ * 설정 차이로 결과가 갈리지 않게 합니다.</p>
  */
 @Slf4j
-public class JsonResponseCleaner {
+public final class JsonResponseCleaner {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private JsonResponseCleaner() {
+        // 유틸리티 클래스
+    }
 
     /**
      * AI 응답에서 순수 JSON 추출
@@ -109,29 +115,8 @@ public class JsonResponseCleaner {
     /**
      * JSON 유효성 검증
      *
-     * @param json JSON 문자열
-     * @return 유효하면 true, 아니면 false
-     */
-    public static boolean isValidJson(String json) {
-        if (json == null || json.trim().isEmpty()) {
-            return false;
-        }
-
-        try {
-            OBJECT_MAPPER.readTree(json);
-            log.debug("JSON 유효성 검증 성공");
-            return true;
-        } catch (JsonProcessingException e) {
-            log.warn("JSON 유효성 검증 실패: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * JSON 유효성 검증 (ObjectMapper 직접 전달)
-     *
-     * @param json JSON 문자열
-     * @param mapper ObjectMapper 인스턴스
+     * @param json   JSON 문자열
+     * @param mapper 검증에 사용할 ObjectMapper
      * @return 유효하면 true, 아니면 false
      */
     public static boolean isValidJson(String json, ObjectMapper mapper) {
@@ -141,28 +126,10 @@ public class JsonResponseCleaner {
 
         try {
             mapper.readTree(json);
-            log.debug("JSON 유효성 검증 성공");
             return true;
         } catch (JsonProcessingException e) {
             log.warn("JSON 유효성 검증 실패: {}", e.getMessage());
             return false;
-        }
-    }
-
-    /**
-     * JSON Pretty Print (가독성 향상)
-     *
-     * @param json JSON 문자열
-     * @return Pretty 포맷된 JSON
-     */
-    public static String prettify(String json) {
-        try {
-            Object jsonObject = OBJECT_MAPPER.readValue(json, Object.class);
-            return OBJECT_MAPPER.writerWithDefaultPrettyPrinter()
-                    .writeValueAsString(jsonObject);
-        } catch (JsonProcessingException e) {
-            log.warn("JSON Pretty Print 실패: {}", e.getMessage());
-            return json;
         }
     }
 }

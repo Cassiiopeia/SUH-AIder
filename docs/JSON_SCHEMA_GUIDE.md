@@ -24,14 +24,18 @@
 
 ### 작동 원리
 
+> **v2.0 변경**: 프롬프트를 조작하지 않습니다. 스키마를 Ollama 네이티브 `format`
+> 파라미터로 전달하므로 프롬프트는 작성하신 그대로 모델에 전달됩니다.
+> `generate`, `chat`, `generateStream`, `chatStream` 네 경로가 모두 동일하게 동작합니다.
+
 ```
 사용자 프롬프트 + JsonSchema
         ↓
-프롬프트 자동 증강 (PromptEnhancer)
+스키마 → Ollama format 파라미터로 변환
         ↓
-Ollama AI 호출
+Ollama AI 호출 (프롬프트는 원본 그대로)
         ↓
-응답 자동 정제 (JsonResponseCleaner)
+응답 방어적 정제 (JsonResponseCleaner)
         ↓
 순수 JSON 반환
 ```
@@ -88,18 +92,26 @@ public class AiConfig {
 
 **효과**: 이제 모든 `ollamaService.generate()` 호출에서 자동으로 `{ "result": "...", "success": true }` 형식으로 응답받습니다.
 
-### 방법 3: 프롬프트 전처리/후처리 추가
+### 방법 3: 시스템 지시문과 타임아웃
+
+> **v2.0 변경**: `promptPrefix`, `promptSuffix`, `customReadTimeout`은 제거됐습니다.
+> 세 필드 모두 엔진이 읽지 않아 설정해도 아무 효과가 없었습니다.
+
+시스템 지시문은 Chat API의 system 메시지로 전달하세요.
 
 ```java
-@Bean
-public OllamaServiceCustomizer ollamaCustomizer() {
-    return OllamaServiceCustomizer.builder()
-        .defaultResponseSchema(JsonSchema.of("answer", "string"))
-        .promptPrefix("[System] You are a helpful assistant.\n\n")
-        .promptSuffix("\n\nPlease be concise.")
-        .customReadTimeout(180)  // 3분 타임아웃
-        .build();
-}
+String answer = engine.chat(
+    "gemma4:e2b",
+    "You are a helpful assistant. Please be concise.",  // system
+    userMessage);
+```
+
+타임아웃은 설정 파일로 지정합니다.
+
+```yaml
+suh:
+  aider:
+    read-timeout: 180   # 초
 ```
 
 ---
@@ -656,9 +668,9 @@ JsonSchema.builder()
 - **버전**: v0.0.8+
 - **관련 클래스**:
   - `JsonSchema` - 스키마 정의
-  - `OllamaServiceCustomizer` - 전역 설정
-  - `PromptEnhancer` - 프롬프트 증강
-  - `JsonResponseCleaner` - 응답 정제
+  - `SuhAiderCustomizer` - 전역 기본 스키마
+  - `JsonResponseCleaner` - 응답 방어적 정제
+  - `GenerateApi` / `ChatApi` - 스키마를 format으로 변환해 전송
 
 ---
 

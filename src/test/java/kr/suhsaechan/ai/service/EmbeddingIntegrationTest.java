@@ -1,23 +1,32 @@
 package kr.suhsaechan.ai.service;
 
-import kr.suhsaechan.ai.config.SuhAiderConfig;
 import kr.suhsaechan.ai.model.ChunkingConfig;
 import kr.suhsaechan.ai.model.EmbeddingRequest;
 import kr.suhsaechan.ai.model.EmbeddingResponse;
+import kr.suhsaechan.ai.support.TestModels;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
- * 임베딩 API 통합 테스트
+ * 임베딩 API 통합 테스트 (실서버 필요)
  *
- * 실행 방법:
- * 1. src/test/resources/application-dev.yml에 서버 설정
- * 2. IDE에서 mainTest() 실행
+ * <pre>
+ * SUH_AIDER_IT=true ./gradlew integrationTest
+ * </pre>
  */
+@Tag("integration")
+@EnabledIfEnvironmentVariable(named = "SUH_AIDER_IT", matches = "true")
 @SpringBootTest
 @ActiveProfiles("dev")
 class EmbeddingIntegrationTest {
@@ -25,107 +34,73 @@ class EmbeddingIntegrationTest {
   @Autowired
   private SuhAiderEngine engine;
 
-  @Autowired
-  private SuhAiderConfig config;
+  @Test
+  @DisplayName("단일 텍스트 임베딩")
+  void basicEmbed() {
+    List<Double> vector = engine.embed(TestModels.EMBEDDING, "안녕하세요");
+
+    assertFalse(vector.isEmpty());
+  }
 
   @Test
-  void mainTest() throws Exception {
-    testBasicEmbed();
-    testBatchEmbed();
-    testDetailedEmbed();
-    testChunkingEmbed();
-    testSimilaritySearch();
+  @DisplayName("배치 임베딩은 입력 개수만큼 벡터를 돌려준다")
+  void batchEmbed() {
+    List<List<Double>> vectors = engine.embed(TestModels.EMBEDDING,
+        List.of("안녕하세요", "반갑습니다", "좋은 하루"));
+
+    assertEquals(3, vectors.size());
+    assertFalse(vectors.get(0).isEmpty());
   }
 
-  void testBasicEmbed() {
-    // 단일 텍스트 임베딩
-    String model = config.getEmbedding().getDefaultModel();
-    String text = "안녕하세요, 테스트 텍스트입니다.";
-
-    List<Double> vector = engine.embed(model, text);
-
-    System.out.println("✅ 기본 임베딩 테스트");
-    System.out.println("  - 벡터 차원: " + vector.size());
-    System.out.println("  - 첫 5개 값: " + vector.subList(0, Math.min(5, vector.size())));
-  }
-
-  void testBatchEmbed() {
-    // 배치 임베딩
-    String model = config.getEmbedding().getDefaultModel();
-    List<String> texts = List.of(
-        "첫 번째 문장입니다.",
-        "두 번째 문장입니다.",
-        "세 번째 문장입니다."
-    );
-
-    List<List<Double>> vectors = engine.embed(model, texts);
-
-    System.out.println("✅ 배치 임베딩 테스트");
-    System.out.println("  - 생성된 벡터 수: " + vectors.size());
-  }
-
-  void testDetailedEmbed() {
-    // 상세 옵션 임베딩
-    EmbeddingRequest request = EmbeddingRequest.builder()
-        .model(config.getEmbedding().getDefaultModel())
-        .input("상세 옵션 테스트 텍스트")
+  @Test
+  @DisplayName("상세 옵션 임베딩")
+  void detailedEmbed() {
+    EmbeddingResponse response = engine.embed(EmbeddingRequest.builder()
+        .model(TestModels.EMBEDDING)
+        .input("상세 옵션 테스트")
         .truncate(true)
-        .keepAlive("10m")
-        .build();
+        .keepAlive("1m")
+        .build());
 
-    EmbeddingResponse response = engine.embed(request);
-
-    System.out.println("✅ 상세 옵션 임베딩 테스트");
-    System.out.println("  - 모델: " + response.getModel());
-    System.out.println("  - 처리 시간: " + (response.getTotalDuration() / 1_000_000) + "ms");
+    assertEquals(1, response.getEmbeddings().size());
   }
 
-  void testChunkingEmbed() {
-    // 청킹 + 임베딩
-    String model = config.getEmbedding().getDefaultModel();
-    String longText = "이것은 청킹 테스트를 위한 긴 텍스트입니다. ".repeat(100);
-    ChunkingConfig chunkingConfig = ChunkingConfig.fixedSize(500, 50);
+  @Test
+  @DisplayName("긴 텍스트는 청킹 후 각 청크가 임베딩된다")
+  void chunkingEmbed() {
+    String longText = "인공지능은 인간의 학습 능력을 컴퓨터로 구현한 기술이다. ".repeat(20);
 
-    EmbeddingResponse response = engine.embedWithChunking(model, longText, chunkingConfig);
+    EmbeddingResponse response = engine.embedWithChunking(
+        TestModels.EMBEDDING, longText, ChunkingConfig.fixedSize(200, 20));
 
-    System.out.println("✅ 청킹 + 임베딩 테스트");
-    System.out.println("  - 원본 길이: " + longText.length() + "자");
-    System.out.println("  - 생성된 청크: " + response.getEmbeddings().size() + "개");
+    assertTrue(response.getEmbeddings().size() > 1, "긴 텍스트는 여러 청크로 나뉘어야 한다");
   }
 
-  void testSimilaritySearch() {
-    // 코사인 유사도 계산 예제
-    String model = config.getEmbedding().getDefaultModel();
-    String query = "인공지능";
-    List<String> documents = List.of(
-        "인공지능은 미래의 기술입니다.",
-        "오늘 날씨가 좋습니다.",
-        "딥러닝과 머신러닝은 AI의 일부입니다.",
-        "맛있는 음식을 먹었습니다."
-    );
+  @Test
+  @DisplayName("유사한 문장이 더 높은 코사인 유사도를 갖는다")
+  void similaritySearch() {
+    List<Double> base = engine.embed(TestModels.EMBEDDING, "고양이는 귀여운 동물이다");
+    List<Double> similar = engine.embed(TestModels.EMBEDDING, "강아지는 사랑스러운 동물이다");
+    List<Double> different = engine.embed(TestModels.EMBEDDING, "자바는 객체지향 프로그래밍 언어다");
 
-    List<Double> queryVector = engine.embed(model, query);
-    List<List<Double>> docVectors = engine.embed(model, documents);
+    double similarScore = cosineSimilarity(base, similar);
+    double differentScore = cosineSimilarity(base, different);
 
-    System.out.println("✅ 유사도 검색 테스트");
-    System.out.println("  - 쿼리: " + query);
-    for (int i = 0; i < documents.size(); i++) {
-      double similarity = cosineSimilarity(queryVector, docVectors.get(i));
-      System.out.printf("  - 문서 %d: %.4f - %s%n", i + 1, similarity, documents.get(i));
-    }
+    assertTrue(similarScore > differentScore,
+        "동물 문장끼리가 더 유사해야 한다 (유사=" + similarScore + ", 무관=" + differentScore + ")");
   }
 
   private double cosineSimilarity(List<Double> a, List<Double> b) {
-    double dotProduct = 0.0;
-    double normA = 0.0;
-    double normB = 0.0;
+    double dot = 0;
+    double normA = 0;
+    double normB = 0;
 
     for (int i = 0; i < a.size(); i++) {
-      dotProduct += a.get(i) * b.get(i);
+      dot += a.get(i) * b.get(i);
       normA += a.get(i) * a.get(i);
       normB += b.get(i) * b.get(i);
     }
 
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 }

@@ -1,42 +1,40 @@
 package kr.suhsaechan.ai.service;
 
+import kr.suhsaechan.ai.http.PreparedStream;
 import kr.suhsaechan.ai.model.PullProgress;
-import okhttp3.Call;
 
 /**
  * PullHandle 기본 구현체
- * OkHttp Call을 사용하여 다운로드 취소 및 상태 관리를 수행합니다.
+ *
+ * <p>취소는 {@link PreparedStream}에 위임합니다. v1.x는 OkHttp {@code Call}을 직접 들고
+ * 있었는데, 그러면 서비스 계층이 HTTP 구현에 묶입니다.</p>
  */
 public class DefaultPullHandle implements PullHandle {
 
     private final String modelName;
-    private final Call httpCall;
-    private volatile boolean cancelled = false;
+    private final PreparedStream stream;
     private volatile boolean done = false;
     private volatile PullProgress latestProgress;
 
     /**
-     * DefaultPullHandle 생성자
-     *
      * @param modelName 다운로드할 모델명
-     * @param httpCall  OkHttp Call 객체 (취소용)
+     * @param stream    취소 가능한 스트림
      */
-    public DefaultPullHandle(String modelName, Call httpCall) {
+    public DefaultPullHandle(String modelName, PreparedStream stream) {
         this.modelName = modelName;
-        this.httpCall = httpCall;
+        this.stream = stream;
     }
 
     @Override
     public void cancel() {
         if (!done) {
-            cancelled = true;
-            httpCall.cancel();
+            stream.cancel();
         }
     }
 
     @Override
     public boolean isCancelled() {
-        return cancelled;
+        return stream.isCancelled();
     }
 
     @Override

@@ -33,11 +33,13 @@ public class EmbeddingRequest {
 
     /**
      * 컨텍스트 길이 초과 시 입력 끝부분 자르기
-     * true: 자름 (기본값)
-     * false: 에러 반환
+     * true: 자름 / false: 에러 반환
+     *
+     * <p>null이면 {@code suh.aider.embedding.truncate} 설정값이 적용됩니다.
+     * v1.x는 여기에 {@code @Builder.Default = true}가 있어 절대 null이 되지 않았고,
+     * 그 결과 설정값이 영영 반영되지 않는 버그가 있었습니다.</p>
      */
-    @Builder.Default
-    private Boolean truncate = true;
+    private Boolean truncate;
 
     /**
      * 요청 후 모델 메모리 유지 시간

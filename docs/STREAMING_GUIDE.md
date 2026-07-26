@@ -2,6 +2,16 @@
 
 > **v0.1.0+**: ChatGPT처럼 실시간 토큰 단위 응답 스트리밍 지원
 
+
+> **v2.0 변경**
+>
+> - 스트리밍에서도 `responseSchema`가 동작합니다. 스키마가 Ollama 네이티브 `format`으로
+>   전달되므로 조각을 모두 이어 붙이면 유효한 JSON이 됩니다.
+>   (v1.x는 경고만 남기고 무시했습니다.)
+> - `generateStreamAsync` / `chatStreamAsync`는 전용 스레드풀에서 실행됩니다.
+>   공용 ForkJoinPool을 점유하지 않아 애플리케이션의 다른 비동기 작업에 영향을 주지 않습니다.
+> - 스트리밍 종료 통지(`onComplete` 또는 `onError`)는 어떤 경로로 끝나든 정확히 한 번 호출됩니다.
+
 ---
 
 ## 📋 목차
